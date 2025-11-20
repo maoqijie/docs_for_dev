@@ -100,9 +100,9 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
             <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2">
                 {/* 模型选择 */}
                 <Select value={model} onValueChange={setModel}>
-                    <SelectTrigger className="w-[180px] bg-background/80 backdrop-blur-sm shadow-sm border-border/50 rounded-full h-9 px-4 transition-all hover:bg-accent/50">
-                        <div className="flex items-center gap-2">
-                            <Sparkles className="h-3.5 w-3.5 text-primary" />
+                    <SelectTrigger className="w-[220px] bg-background/80 backdrop-blur-sm shadow-sm border-border/50 rounded-full h-9 px-4 transition-all hover:bg-accent/50">
+                        <div className="flex items-center gap-2 truncate">
+                            <Sparkles className="h-3.5 w-3.5 text-primary flex-shrink-0" />
                             <SelectValue placeholder="选择模型" />
                         </div>
                     </SelectTrigger>

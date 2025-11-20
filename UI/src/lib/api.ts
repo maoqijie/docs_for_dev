@@ -1,5 +1,4 @@
 import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
 
 // ==================== 类型定义 ====================
 
@@ -91,19 +90,23 @@ export async function sendMessage(
     thinkingDepth: string,
     onChunk: (chunk: string) => void
 ): Promise<void> {
-    // 监听流式响应事件
-    const unlisten = await listen<string>('message-chunk', (event) => {
-        onChunk(event.payload);
-    });
-
     try {
         // 调用后端命令
-        await invoke('send_message', { session_id: sessionId, content, model, thinking_depth: thinkingDepth });
+        // 兼容 Tauri 参数命名（部分环境要求 camelCase）
+        await invoke('send_message', {
+            sessionId,
+            session_id: sessionId,
+            content,
+            model,
+            thinking_depth: thinkingDepth,
+        });
+
+        // 若需要流式展示，可在此扩展（当前后端已写入 DB，前端后续 reload）
+        if (onChunk) {
+            onChunk('');
+        }
     } catch (error) {
         console.error('send_message 调用失败', error);
         throw error;
-    } finally {
-        // 清理事件监听器
-        unlisten();
     }
 }

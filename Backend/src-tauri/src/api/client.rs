@@ -101,15 +101,43 @@ impl CodexClient {
                 continue;
             }
 
-            // 尝试解析 codex --json 的事件格式，若失败则直接把行作为文本 chunk
+            // 尝试解析 codex --json 的事件格式，只取 assistant 的文本内容
             if let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) {
+                // 普通 content 字段
                 if let Some(content) = value.get("content").and_then(|v| v.as_str()) {
                     full_content.push_str(content);
                     on_chunk(content.to_string());
                     continue;
                 }
+
+                // item.completed 且类型为 agent_message 时取 text
+                if value
+                    .get("type")
+                    .and_then(|t| t.as_str())
+                    .map(|t| t == "item.completed")
+                    .unwrap_or(false)
+                {
+                    if let Some(item) = value.get("item") {
+                        let is_agent = item
+                            .get("type")
+                            .and_then(|t| t.as_str())
+                            .map(|t| t == "agent_message")
+                            .unwrap_or(false);
+                        if is_agent {
+                            if let Some(text) = item.get("text").and_then(|t| t.as_str()) {
+                                full_content.push_str(text);
+                                on_chunk(text.to_string());
+                                continue;
+                            }
+                        }
+                    }
+                }
+
+                // 其他事件不计入正文，直接跳过
+                continue;
             }
 
+            // 非 JSON 直接追加
             full_content.push_str(&line);
             on_chunk(line);
         }
