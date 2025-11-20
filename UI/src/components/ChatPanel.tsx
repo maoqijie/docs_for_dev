@@ -10,10 +10,14 @@ import {
     SelectTrigger,
     SelectValue,
 } from "./ui/select";
-import { Sparkles, BrainCircuit, Loader2 } from 'lucide-react';
+import { Sparkles, BrainCircuit, Loader2, ChevronLeft } from 'lucide-react';
+import { Button } from './ui/button';
 
 interface ChatPanelProps {
     sessionId: string;
+    mode: 'doc-dev' | 'general';
+    onModeChange: (mode: 'doc-dev' | 'general') => void;
+    onModeBack: () => void;
 }
 
 const MODELS = [
@@ -32,7 +36,12 @@ const THINKING_LEVELS = [
     { id: 'high', name: 'High Effort' },
 ];
 
-export function ChatPanel({ sessionId }: ChatPanelProps) {
+const MODES = [
+    { id: 'doc-dev', name: '文档开发模式 (默认)' },
+    { id: 'general', name: '通用模式' },
+];
+
+export function ChatPanel({ sessionId, mode, onModeChange, onModeBack }: ChatPanelProps) {
     const [messages, setMessages] = useState<Message[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [isMessagesLoading, setIsMessagesLoading] = useState(true);
@@ -76,7 +85,12 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
 
         try {
             // 2. 发送消息并接收流式响应（带模型与思考深度）
-            await sendMessage(sessionId, content, model, thinkingDepth, (chunk) => {
+            const finalContent =
+                mode === 'doc-dev'
+                    ? `【文档开发模式】请针对文档/开发相关需求输出结构化、可执行的步骤与示例。\n${content}`
+                    : content;
+
+            await sendMessage(sessionId, finalContent, model, thinkingDepth, (chunk) => {
                 setStreamingContent((prev) => prev + chunk);
             });
 
@@ -105,8 +119,35 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
             animate={{ opacity: 1 }}
             className="flex flex-col h-full relative"
         >
-            {/* 顶部控制栏 - 悬浮 */}
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2">
+            {/* 顶部控制栏 - 固定在内容上方，不占据头部 */}
+            <div className="max-w-4xl mx-auto w-full px-4 pt-6 flex flex-wrap gap-2 justify-start items-center">
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 rounded-full"
+                    onClick={onModeBack}
+                    title="返回模式选择"
+                >
+                    <ChevronLeft className="h-4 w-4" />
+                </Button>
+
+                {/* 模式选择 */}
+                <Select value={mode} onValueChange={onModeChange}>
+                    <SelectTrigger className="w-[200px] bg-background/80 backdrop-blur-sm shadow-sm border-border/50 rounded-full h-9 px-4 transition-all hover:bg-accent/50">
+                        <div className="flex items-center gap-2 truncate">
+                            <Sparkles className="h-3.5 w-3.5 text-primary flex-shrink-0" />
+                            <SelectValue placeholder="选择模式" />
+                        </div>
+                    </SelectTrigger>
+                    <SelectContent>
+                        {MODES.map((m) => (
+                            <SelectItem key={m.id} value={m.id} className="cursor-pointer">
+                                {m.name}
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+
                 {/* 模型选择 */}
                 <Select value={model} onValueChange={setModel}>
                     <SelectTrigger className="w-[220px] bg-background/80 backdrop-blur-sm shadow-sm border-border/50 rounded-full h-9 px-4 transition-all hover:bg-accent/50">

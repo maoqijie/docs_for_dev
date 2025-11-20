@@ -5,10 +5,16 @@ import { Sidebar } from './components/Sidebar';
 import { ThemeProvider } from './components/ThemeProvider';
 import { Plus } from 'lucide-react';
 import { Button } from './components/ui/button';
+import { motion } from 'framer-motion';
 
 function App() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [mode, setMode] = useState<'doc-dev' | 'general' | null>(() => {
+    const stored = localStorage.getItem('codex-mode') as 'doc-dev' | 'general' | null;
+    return stored || null;
+  });
+  const [showModePicker, setShowModePicker] = useState(() => mode === null);
 
   useEffect(() => {
     loadSessions();
@@ -55,6 +61,16 @@ function App() {
     }
   };
 
+  const handleSelectMode = (value: 'doc-dev' | 'general') => {
+    setMode(value);
+    localStorage.setItem('codex-mode', value);
+    setShowModePicker(false);
+  };
+
+  const handleBackToModePicker = () => {
+    setShowModePicker(true);
+  };
+
   return (
     <ThemeProvider defaultTheme="dark" storageKey="codex-theme">
       <div className="flex h-screen bg-background">
@@ -68,9 +84,56 @@ function App() {
         />
 
         {/* 主内容区 */}
-        <div className="flex-1 flex flex-col">
-          {currentSessionId ? (
-            <ChatPanel key={currentSessionId} sessionId={currentSessionId} />
+        <div className="flex-1 flex flex-col relative overflow-hidden">
+          {showModePicker ? (
+            <div className="flex-1 flex items-center justify-center bg-gradient-to-b from-background to-muted/20 px-6">
+              <div className="max-w-4xl w-full space-y-6">
+                <div className="text-center space-y-2">
+                  <h2 className="text-3xl font-bold">选择模式</h2>
+                  <p className="text-muted-foreground">
+                    文档开发模式将回答聚焦于文档/开发流程，通用模式则保持普通聊天。
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {[
+                    {
+                      id: 'doc-dev' as const,
+                      title: '文档开发模式 (默认)',
+                      desc: '聚焦文档撰写、开发步骤、结构化输出与可执行指导。',
+                    },
+                    {
+                      id: 'general' as const,
+                      title: '通用模式',
+                      desc: '保持普通聊天，不强制文档语境。',
+                    },
+                  ].map((m) => (
+                    <motion.button
+                      key={m.id}
+                      whileHover={{ scale: 1.01 }}
+                      whileTap={{ scale: 0.99 }}
+                      onClick={() => handleSelectMode(m.id)}
+                      className="text-left rounded-2xl border bg-card/80 p-5 shadow-sm hover:border-primary transition-all"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-lg font-semibold">{m.title}</span>
+                        {mode === m.id && (
+                          <span className="text-xs text-primary font-medium">已选</span>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground mt-2 leading-relaxed">{m.desc}</p>
+                    </motion.button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : currentSessionId ? (
+            <ChatPanel
+              key={currentSessionId}
+              sessionId={currentSessionId}
+              mode={mode || 'doc-dev'}
+              onModeChange={handleSelectMode}
+              onModeBack={handleBackToModePicker}
+            />
           ) : (
             <div className="flex-1 flex items-center justify-center bg-gradient-to-b from-background to-muted/20">
               <div className="text-center space-y-8 max-w-lg px-4">
