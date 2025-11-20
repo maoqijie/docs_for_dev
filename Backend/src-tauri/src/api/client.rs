@@ -1,7 +1,11 @@
-use anyhow::Result;
-use futures::StreamExt;
-use reqwest::Client;
+use std::process::Stdio;
+
+use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
+use tokio::{
+    io::{AsyncBufReadExt, BufReader},
+    process::Command,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
@@ -9,130 +13,88 @@ pub struct ChatMessage {
     pub content: String,
 }
 
-#[derive(Debug, Serialize)]
-struct ChatRequest {
-    model: String,
-    messages: Vec<ChatMessage>,
-    stream: bool,
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatResponse {
-    choices: Vec<Choice>,
-}
-
-#[derive(Debug, Deserialize)]
-struct Choice {
-    message: ChatMessage,
-}
-
-#[derive(Debug, Deserialize)]
-struct StreamResponse {
-    choices: Vec<StreamChoice>,
-}
-
-#[derive(Debug, Deserialize)]
-struct StreamChoice {
-    delta: Delta,
-}
-
-#[derive(Debug, Deserialize)]
-struct Delta {
-    content: Option<String>,
-}
-
 pub struct CodexClient {
-    client: Client,
-    api_key: String,
-    api_endpoint: String,
     model: String,
 }
 
 impl CodexClient {
-    pub fn new(api_key: String, api_endpoint: String, model: String) -> Self {
-        Self {
-            client: Client::new(),
-            api_key,
-            api_endpoint,
-            model,
-        }
+    pub fn new(_api_key: String, _api_endpoint: String, model: String) -> Self {
+        Self { model }
     }
 
-    pub async fn chat_stream<F>(&self, messages: Vec<ChatMessage>, mut on_chunk: F) -> Result<String>
+    pub async fn chat_stream<F>(
+        &self,
+        messages: Vec<ChatMessage>,
+        mut on_chunk: F,
+    ) -> Result<String>
     where
         F: FnMut(String),
     {
-        let request = ChatRequest {
-            model: self.model.clone(),
-            messages,
-            stream: true,
-        };
+        let prompt = build_prompt(messages);
 
-        let response = self
-            .client
-            .post(&self.api_endpoint)
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .header("Content-Type", "application/json")
-            .json(&request)
-            .send()
-            .await?;
+        let mut command = Command::new("codex");
+        command
+            .arg("exec")
+            .arg("--json")
+            .arg("--model")
+            .arg(self.model.clone())
+            .arg("--ask-for-approval")
+            .arg("never")
+            .arg("--sandbox")
+            .arg("workspace-write")
+            .arg("--skip-git-repo-check")
+            .arg(prompt)
+            .stderr(Stdio::null())
+            .stdout(Stdio::piped());
 
-        let mut stream = response.bytes_stream();
+        let mut child = command.spawn().map_err(|e| anyhow!(e))?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| anyhow!("无法获取 codex stdout"))?;
+
+        let mut reader = BufReader::new(stdout).lines();
         let mut full_content = String::new();
 
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk?;
-            let text = String::from_utf8_lossy(&chunk);
+        while let Some(line) = reader.next_line().await? {
+            if line.trim().is_empty() {
+                continue;
+            }
 
-            for line in text.lines() {
-                if !line.starts_with("data: ") {
+            // 尝试解析 codex --json 的事件格式，若失败则直接把行作为文本 chunk
+            if let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) {
+                if let Some(content) = value.get("content").and_then(|v| v.as_str()) {
+                    full_content.push_str(content);
+                    on_chunk(content.to_string());
                     continue;
                 }
-
-                let data = line.trim_start_matches("data: ").trim();
-
-                if data == "[DONE]" {
-                    break;
-                }
-
-                if let Ok(parsed) = serde_json::from_str::<StreamResponse>(data) {
-                    if let Some(content) = parsed
-                        .choices
-                        .get(0)
-                        .and_then(|c| c.delta.content.as_ref())
-                    {
-                        full_content.push_str(content);
-                        on_chunk(content.clone());
-                    }
-                }
             }
+
+            full_content.push_str(&line);
+            on_chunk(line);
+        }
+
+        let status = child.wait().await?;
+        if !status.success() {
+            return Err(anyhow!("codex cli 退出失败: {}", status));
         }
 
         Ok(full_content)
     }
 
     pub async fn chat(&self, messages: Vec<ChatMessage>) -> Result<String> {
-        let request = ChatRequest {
-            model: self.model.clone(),
-            messages,
-            stream: false,
-        };
-
-        let response = self
-            .client
-            .post(&self.api_endpoint)
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .header("Content-Type", "application/json")
-            .json(&request)
-            .send()
-            .await?
-            .json::<ChatResponse>()
+        let mut buffer = String::new();
+        let _ = self
+            .chat_stream(messages, |chunk| buffer.push_str(&chunk))
             .await?;
-
-        Ok(response
-            .choices
-            .get(0)
-            .map(|c| c.message.content.clone())
-            .unwrap_or_default())
+        Ok(buffer)
     }
+}
+
+fn build_prompt(messages: Vec<ChatMessage>) -> String {
+    messages
+        .into_iter()
+        .map(|m| format!("{}: {}", m.role, m.content))
+        .collect::<Vec<_>>()
+        .join("\n")
 }

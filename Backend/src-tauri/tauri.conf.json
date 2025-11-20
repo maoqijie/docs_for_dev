@@ -1,11 +1,12 @@
 {
   "productName": "Codex Chat",
   "identifier": "com.example.codex-chat",
+  "version": "0.1.0",
   "build": {
     "beforeBuildCommand": "",
     "beforeDevCommand": "",
-    "distDir": "../UI/dist",
-    "devPath": "http://localhost:5173"
+    "frontendDist": "../UI/dist",
+    "devUrl": "http://localhost:5173"
   },
   "app": {
     "windows": [

@@ -12,22 +12,20 @@ fn main() {
     std::fs::create_dir_all(&data_dir).expect("无法创建数据目录");
 
     let db_path = data_dir.join("database.db");
-    let db_path_str = db_path
-        .to_str()
-        .expect("数据库路径包含非 UTF-8 字符");
+    let db_path_str = db_path.to_str().expect("数据库路径包含非 UTF-8 字符");
 
-    let db_manager = Arc::new(
-        DbManager::new(db_path_str).expect("数据库初始化失败"),
-    );
+    let db_manager = Arc::new(DbManager::new(db_path_str).expect("数据库初始化失败"));
 
-    let api_key = load_api_key()
-        .expect("请在环境变量 CODEX_API_KEY 或 ~/.codex/auth.json 中提供 OPENAI_API_KEY");
+    let api_key = load_api_key();
     let api_endpoint = std::env::var("CODEX_API_ENDPOINT")
         .unwrap_or_else(|_| "https://api.openai.com/v1/chat/completions".to_string());
-    let model = std::env::var("CODEX_MODEL")
-        .unwrap_or_else(|_| "gpt-4".to_string());
+    let model = std::env::var("CODEX_MODEL").unwrap_or_else(|_| "gpt-4".to_string());
 
-    let codex_client = Arc::new(CodexClient::new(api_key, api_endpoint, model));
+    let codex_client = Arc::new(CodexClient::new(
+        api_key.unwrap_or_default(),
+        api_endpoint,
+        model,
+    ));
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())

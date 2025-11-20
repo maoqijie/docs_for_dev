@@ -17,9 +17,7 @@ pub async fn create_session(
 }
 
 #[tauri::command]
-pub async fn get_sessions(
-    db: State<'_, Arc<DbManager>>,
-) -> Result<Vec<Session>, String> {
+pub async fn get_sessions(db: State<'_, Arc<DbManager>>) -> Result<Vec<Session>, String> {
     db.get_all_sessions()
         .map_err(|e| format!("获取会话列表失败: {}", e))
 }

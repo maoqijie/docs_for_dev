@@ -42,7 +42,7 @@ export async function getSessions(): Promise<Session[]> {
  * @param sessionId 会话 ID
  */
 export async function deleteSession(sessionId: string): Promise<void> {
-    return await invoke('delete_session', { sessionId });
+    return await invoke('delete_session', { session_id: sessionId });
 }
 
 /**
@@ -54,7 +54,7 @@ export async function updateSessionTitle(
     sessionId: string,
     title: string
 ): Promise<void> {
-    return await invoke('update_session_title', { sessionId, title });
+    return await invoke('update_session_title', { session_id: sessionId, title });
 }
 
 // ==================== 消息管理 ====================
@@ -65,7 +65,7 @@ export async function updateSessionTitle(
  * @returns 消息列表
  */
 export async function getMessages(sessionId: string): Promise<Message[]> {
-    return await invoke('get_messages', { sessionId });
+    return await invoke('get_messages', { session_id: sessionId });
 }
 
 /**
@@ -94,7 +94,7 @@ export async function sendMessage(
 
     try {
         // 调用后端命令
-        await invoke('send_message', { sessionId, content });
+        await invoke('send_message', { session_id: sessionId, content });
     } finally {
         // 清理事件监听器
         unlisten();

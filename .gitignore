@@ -1,3 +1,6 @@
 .spec-workflow/
 *.md
 !README.md
+**/target/
+Backend/src-tauri/Cargo.lock
+start_dev.sh
