@@ -10,6 +10,7 @@ import { Card } from './ui/card';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bot, User, Copy, Check } from 'lucide-react';
 import { Button } from './ui/button';
+import { cn } from '../lib/utils';
 
 interface MessageListProps {
     messages: Message[];
@@ -83,16 +84,24 @@ function MessageBubble({
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            transition={{ delay: index * 0.05 }}
-            className="flex gap-4"
+            transition={{ delay: index * 0.05, duration: 0.4, ease: "easeOut" }}
+            className={cn(
+                "flex gap-4 w-full",
+                isUser ? "flex-row-reverse" : "flex-row"
+            )}
         >
             {/* 头像 */}
-            <Avatar className="h-10 w-10 flex-shrink-0">
+            <Avatar className={cn(
+                "h-9 w-9 flex-shrink-0 shadow-sm border border-border/50",
+                isUser ? "mt-1" : "mt-1"
+            )}>
                 <div
-                    className={`w-full h-full flex items-center justify-center ${isUser
-                        ? 'bg-gradient-to-br from-blue-500 to-purple-600'
-                        : 'bg-gradient-to-br from-green-500 to-teal-600'
-                        }`}
+                    className={cn(
+                        "w-full h-full flex items-center justify-center",
+                        isUser
+                            ? "bg-gradient-to-br from-blue-600 to-violet-600"
+                            : "bg-gradient-to-br from-emerald-500 to-teal-600"
+                    )}
                 >
                     {isUser ? (
                         <User className="h-5 w-5 text-white" />
@@ -103,38 +112,61 @@ function MessageBubble({
             </Avatar>
 
             {/* 消息内容 */}
-            <Card
-                className={`flex-1 p-4 ${isUser
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted/50'
-                    } ${isStreaming ? 'animate-pulse' : ''}`}
-            >
-                <div className="prose prose-sm dark:prose-invert max-w-none">
-                    <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        components={{
-                            code({ node, className, children, ...props }: any) {
-                                const match = /language-(\w+)/.exec(className || '');
-                                return match ? (
-                                    <CodeBlock
-                                        language={match[1]}
-                                        code={String(children).replace(/\n$/, '')}
-                                    />
-                                ) : (
-                                    <code
-                                        className="px-1.5 py-0.5 rounded bg-muted text-sm font-mono"
-                                        {...props}
-                                    >
-                                        {children}
-                                    </code>
-                                );
-                            },
-                        }}
-                    >
-                        {message.content}
-                    </ReactMarkdown>
+            <div className={cn(
+                "flex flex-col max-w-[85%]",
+                isUser ? "items-end" : "items-start"
+            )}>
+                <div className="flex items-center gap-2 mb-1 px-1">
+                    <span className="text-xs font-medium text-muted-foreground">
+                        {isUser ? 'You' : 'Codex AI'}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground/60">
+                        {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
                 </div>
-            </Card>
+
+                <Card
+                    className={cn(
+                        "px-5 py-3.5 shadow-sm border-0",
+                        isUser
+                            ? "bg-primary text-primary-foreground rounded-2xl rounded-tr-sm"
+                            : "bg-muted/40 backdrop-blur-sm rounded-2xl rounded-tl-sm border border-border/40",
+                        isStreaming && "animate-pulse-subtle"
+                    )}
+                >
+                    <div className={cn(
+                        "prose prose-sm max-w-none break-words",
+                        isUser ? "prose-invert dark:prose-zinc dark:text-zinc-900" : "dark:prose-invert"
+                    )}>
+                        <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                                code({ node, className, children, ...props }: any) {
+                                    const match = /language-(\w+)/.exec(className || '');
+                                    return match ? (
+                                        <CodeBlock
+                                            language={match[1]}
+                                            code={String(children).replace(/\n$/, '')}
+                                        />
+                                    ) : (
+                                        <code
+                                            className={cn(
+                                                "px-1.5 py-0.5 rounded text-sm font-mono",
+                                                isUser ? "bg-primary-foreground/10" : "bg-muted-foreground/20"
+                                            )}
+                                            {...props}
+                                        >
+                                            {children}
+                                        </code>
+                                    );
+                                },
+                            }}
+                        >
+                            {message.content}
+                        </ReactMarkdown>
+                    </div>
+                </Card>
+            </div>
         </motion.div>
     );
 }
