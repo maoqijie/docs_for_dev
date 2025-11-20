@@ -64,7 +64,7 @@ export async function updateSessionTitle(
  * @returns 消息列表
  */
 export async function getMessages(sessionId: string): Promise<Message[]> {
-    return await invoke('get_messages', { session_id: sessionId });
+    return await invoke('get_messages', { sessionId, session_id: sessionId });
 }
 
 /**
