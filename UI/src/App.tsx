@@ -39,10 +39,17 @@ function App() {
   const handleDeleteSession = async (sessionId: string) => {
     try {
       await deleteSession(sessionId);
-      await loadSessions();
+      // 先更新本地列表，避免等待两次请求
+      setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+
       if (currentSessionId === sessionId) {
-        setCurrentSessionId(sessions[0]?.id || null);
+        // 删除当前会话时，切到剩余最新的一个
+        const next = sessions.find((s) => s.id !== sessionId);
+        setCurrentSessionId(next?.id || null);
       }
+
+      // 再异步刷新一次，确保状态同步
+      loadSessions();
     } catch (error) {
       console.error('删除会话失败:', error);
     }

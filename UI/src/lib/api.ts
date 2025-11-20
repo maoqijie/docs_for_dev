@@ -41,7 +41,7 @@ export async function getSessions(): Promise<Session[]> {
  * @param sessionId 会话 ID
  */
 export async function deleteSession(sessionId: string): Promise<void> {
-    return await invoke('delete_session', { session_id: sessionId });
+    return await invoke('delete_session', { sessionId, session_id: sessionId });
 }
 
 /**
