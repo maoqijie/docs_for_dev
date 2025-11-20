@@ -38,6 +38,7 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
     const [streamingContent, setStreamingContent] = useState('');
     const [model, setModel] = useState(MODELS[0].id);
     const [thinkingDepth, setThinkingDepth] = useState('low');
+    const [error, setError] = useState<string | null>(null);
 
     // 加载会话消息
     useEffect(() => {
@@ -65,9 +66,10 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
         setMessages((prev) => [...prev, userMessage]);
         setIsLoading(true);
         setStreamingContent('');
+        setError(null);
 
         try {
-            // 2. 发送消息并接收流式响应
+            // 2. 发送消息并接收流式响应（带模型与思考深度）
             await sendMessage(sessionId, content, model, thinkingDepth, (chunk) => {
                 setStreamingContent((prev) => prev + chunk);
             });
@@ -77,7 +79,7 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
             setStreamingContent('');
         } catch (error) {
             console.error('发送消息失败:', error);
-            // TODO: 显示错误提示
+            setError(error instanceof Error ? error.message : String(error));
         } finally {
             setIsLoading(false);
         }
@@ -136,6 +138,11 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
                 streamingContent={streamingContent}
                 isLoading={isLoading}
             />
+            {error && (
+                <div className="px-6 pb-2 text-sm text-red-500">
+                    发送失败：{error}
+                </div>
+            )}
             <InputBox onSend={handleSend} disabled={isLoading} />
         </motion.div>
     );

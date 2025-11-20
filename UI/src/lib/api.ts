@@ -99,6 +99,9 @@ export async function sendMessage(
     try {
         // 调用后端命令
         await invoke('send_message', { session_id: sessionId, content, model, thinking_depth: thinkingDepth });
+    } catch (error) {
+        console.error('send_message 调用失败', error);
+        throw error;
     } finally {
         // 清理事件监听器
         unlisten();

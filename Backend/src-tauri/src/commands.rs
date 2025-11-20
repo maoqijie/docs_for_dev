@@ -38,6 +38,8 @@ pub async fn send_message(
     client: State<'_, Arc<CodexClient>>,
     session_id: String,
     content: String,
+    model: Option<String>,
+    thinking_depth: Option<String>,
 ) -> Result<(), String> {
     println!(
         "[commands] send_message session_id={} content_preview={}",
@@ -62,7 +64,7 @@ pub async fn send_message(
 
     let window_clone = window.clone();
     let response = client
-        .chat_stream(chat_messages, move |chunk| {
+        .chat_stream(chat_messages, model, thinking_depth, move |chunk| {
             let _ = window_clone.emit("message-chunk", chunk);
         })
         .await

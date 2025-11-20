@@ -30,6 +30,8 @@ impl CodexClient {
     pub async fn chat_stream<F>(
         &self,
         messages: Vec<ChatMessage>,
+        model_override: Option<String>,
+        thinking_depth: Option<String>,
         mut on_chunk: F,
     ) -> Result<String>
     where
@@ -39,7 +41,7 @@ impl CodexClient {
 
         log_info(&format!(
             "准备调用 codex，model={}，prompt-preview={}",
-            self.model,
+            model_override.clone().unwrap_or_else(|| self.model.clone()),
             prompt.chars().take(80).collect::<String>()
         ));
 
@@ -48,20 +50,23 @@ impl CodexClient {
         }
 
         let mut command = Command::new("codex");
-        // 注意：`--ask-for-approval` 是全局参数，必须放在 `exec` 之前，否则 CLI 会直接退出
         command
-            .arg("--ask-for-approval")
-            .arg("never")
             .arg("exec")
             .arg("--json")
             .arg("--model")
-            .arg(self.model.clone())
+            .arg(model_override.unwrap_or_else(|| self.model.clone()))
             .arg("--sandbox")
             .arg("workspace-write")
             .arg("--skip-git-repo-check")
             .arg(prompt)
             .stderr(Stdio::piped())
             .stdout(Stdio::piped());
+
+        if let Some(depth) = thinking_depth {
+            command
+                .arg("-c")
+                .arg(format!("model_reasoning_effort=\"{}\"", depth));
+        }
 
         let mut child = command
             .spawn()
@@ -132,7 +137,7 @@ impl CodexClient {
     pub async fn chat(&self, messages: Vec<ChatMessage>) -> Result<String> {
         let mut buffer = String::new();
         let _ = self
-            .chat_stream(messages, |chunk| buffer.push_str(&chunk))
+            .chat_stream(messages, None, None, |chunk| buffer.push_str(&chunk))
             .await?;
         Ok(buffer)
     }

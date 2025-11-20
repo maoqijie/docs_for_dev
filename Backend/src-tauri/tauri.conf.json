@@ -17,5 +17,9 @@
         "resizable": true
       }
     ]
+  },
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:default"
   }
 }
