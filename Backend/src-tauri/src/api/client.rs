@@ -33,21 +33,39 @@ impl CodexClient {
         let prompt = build_prompt(messages);
 
         let mut command = Command::new("codex");
+        // 注意：`--ask-for-approval` 是全局参数，必须放在 `exec` 之前，否则 CLI 会直接退出
         command
+            .arg("--ask-for-approval")
+            .arg("never")
             .arg("exec")
             .arg("--json")
             .arg("--model")
             .arg(self.model.clone())
-            .arg("--ask-for-approval")
-            .arg("never")
             .arg("--sandbox")
             .arg("workspace-write")
             .arg("--skip-git-repo-check")
             .arg(prompt)
-            .stderr(Stdio::null())
+            .stderr(Stdio::piped())
             .stdout(Stdio::piped());
 
         let mut child = command.spawn().map_err(|e| anyhow!(e))?;
+
+        // 异步收集 stderr，便于失败时输出详细错误
+        let stderr_handle = child.stderr.take().map(|stderr| {
+            tokio::spawn(async move {
+                let mut reader = BufReader::new(stderr);
+                let mut buf = String::new();
+                let mut output = String::new();
+
+                while reader.read_line(&mut buf).await.unwrap_or(0) > 0 {
+                    output.push_str(&buf);
+                    buf.clear();
+                }
+
+                output
+            })
+        });
+
         let stdout = child
             .stdout
             .take()
@@ -75,8 +93,22 @@ impl CodexClient {
         }
 
         let status = child.wait().await?;
+        let stderr_output = if let Some(handle) = stderr_handle {
+            handle.await.unwrap_or_default()
+        } else {
+            String::new()
+        };
+
         if !status.success() {
-            return Err(anyhow!("codex cli 退出失败: {}", status));
+            if stderr_output.trim().is_empty() {
+                return Err(anyhow!("codex cli 退出失败: {}", status));
+            } else {
+                return Err(anyhow!(
+                    "codex cli 退出失败: {} | {}",
+                    status,
+                    stderr_output.trim()
+                ));
+            }
         }
 
         Ok(full_content)
