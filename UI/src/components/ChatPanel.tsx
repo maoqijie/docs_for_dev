@@ -10,7 +10,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "./ui/select";
-import { Sparkles, BrainCircuit } from 'lucide-react';
+import { Sparkles, BrainCircuit, Loader2 } from 'lucide-react';
 
 interface ChatPanelProps {
     sessionId: string;
@@ -35,6 +35,7 @@ const THINKING_LEVELS = [
 export function ChatPanel({ sessionId }: ChatPanelProps) {
     const [messages, setMessages] = useState<Message[]>([]);
     const [isLoading, setIsLoading] = useState(false);
+    const [isMessagesLoading, setIsMessagesLoading] = useState(true);
     const [streamingContent, setStreamingContent] = useState('');
     const [model, setModel] = useState(MODELS[0].id);
     const [thinkingDepth, setThinkingDepth] = useState('low');
@@ -46,11 +47,15 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
     }, [sessionId]);
 
     const loadMessages = async () => {
+        setIsMessagesLoading(true);
         try {
             const msgs = await getMessages(sessionId);
             setMessages(msgs);
         } catch (error) {
             console.error('加载消息失败:', error);
+            setError(error instanceof Error ? error.message : String(error));
+        } finally {
+            setIsMessagesLoading(false);
         }
     };
 
@@ -67,6 +72,7 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
         setIsLoading(true);
         setStreamingContent('');
         setError(null);
+        setIsMessagesLoading(true);
 
         try {
             // 2. 发送消息并接收流式响应（带模型与思考深度）
@@ -82,6 +88,7 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
             setError(error instanceof Error ? error.message : String(error));
         } finally {
             setIsLoading(false);
+            setIsMessagesLoading(false);
         }
     };
 
@@ -89,6 +96,8 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
     const currentThinkingLevels = model === 'gpt-5.1-codex-max'
         ? [...THINKING_LEVELS, { id: 'xhigh', name: 'Extra High Effort' }]
         : THINKING_LEVELS;
+
+    const showTopLoader = isMessagesLoading || isLoading || !!streamingContent;
 
     return (
         <motion.div
@@ -133,11 +142,32 @@ export function ChatPanel({ sessionId }: ChatPanelProps) {
                 </Select>
             </div>
 
+            {showTopLoader && (
+                <div className="max-w-4xl mx-auto w-full px-4 mt-10 mb-2">
+                    <div className="flex items-center gap-3 bg-muted/40 border border-border/60 rounded-xl px-4 py-3 shadow-sm animate-pulse">
+                        <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                        <div className="leading-tight">
+                            <p className="text-sm font-medium text-foreground">正在生成回复…</p>
+                            <p className="text-xs text-muted-foreground">稍等片刻，浮浮酱马上回应主人喵</p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <MessageList
                 messages={messages}
                 streamingContent={streamingContent}
-                isLoading={isLoading}
+                isLoading={isMessagesLoading || isLoading}
             />
+            {isMessagesLoading && (
+                <div className="max-w-3xl mx-auto w-full px-4 -mt-4 mb-4">
+                    <div className="h-24 rounded-2xl bg-gradient-to-r from-muted/60 via-muted/30 to-muted/60 animate-pulse shadow-sm border border-border/50 relative overflow-hidden">
+                        <div className="absolute inset-0 flex items-center justify-center">
+                            <Loader2 className="h-6 w-6 text-primary animate-spin" />
+                        </div>
+                    </div>
+                </div>
+            )}
             {error && (
                 <div className="px-6 pb-2 text-sm text-red-500">
                     发送失败：{error}

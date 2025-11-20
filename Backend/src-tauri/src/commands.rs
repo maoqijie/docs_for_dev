@@ -27,8 +27,15 @@ pub async fn get_messages(
     db: State<'_, Arc<DbManager>>,
     session_id: String,
 ) -> Result<Vec<Message>, String> {
-    db.get_session_messages(&session_id)
-        .map_err(|e| format!("获取消息失败: {}", e))
+    println!("[commands] get_messages session_id={}", session_id);
+    let result = db
+        .get_session_messages(&session_id)
+        .map_err(|e| format!("获取消息失败: {}", e));
+
+    if let Ok(ref msgs) = result {
+        println!("[commands] get_messages -> {} 条", msgs.len());
+    }
+    result
 }
 
 #[tauri::command]

@@ -97,12 +97,22 @@ impl CodexClient {
         let mut full_content = String::new();
 
         while let Some(line) = reader.next_line().await? {
-            if line.trim().is_empty() {
+            // 去掉空行
+            let mut raw = line.trim().to_string();
+            if raw.is_empty() {
                 continue;
             }
 
+            // codex cli 有时会以 `assistant: {json...}` 前缀输出，先剥离前缀
+            if let Some(stripped) = raw.strip_prefix("assistant:") {
+                raw = stripped.trim_start().to_string();
+                if raw.is_empty() {
+                    continue;
+                }
+            }
+
             // 尝试解析 codex --json 的事件格式，只取 assistant 的文本内容
-            if let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) {
+            if let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) {
                 // 普通 content 字段
                 if let Some(content) = value.get("content").and_then(|v| v.as_str()) {
                     full_content.push_str(content);
@@ -137,9 +147,8 @@ impl CodexClient {
                 continue;
             }
 
-            // 非 JSON 直接追加
-            full_content.push_str(&line);
-            on_chunk(line);
+            // 解析失败则跳过，避免把控制事件写入正文
+            continue;
         }
 
         let status = child.wait().await?;

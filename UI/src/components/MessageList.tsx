@@ -43,8 +43,8 @@ export function MessageList({
                 {/* 流式响应中的消息 */}
                 {isLoading && streamingContent && (
                     <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
                     >
                         <MessageBubble
                             message={{
