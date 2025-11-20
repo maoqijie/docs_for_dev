@@ -17,9 +17,10 @@ fn main() {
     let db_manager = Arc::new(DbManager::new(db_path_str).expect("数据库初始化失败"));
 
     let api_key = load_api_key();
+    // 默认模型改为与 ~/.codex/config.toml 一致的自定义中转模型，避免落回官方 gpt-4 导致 ChatGPT key 400
     let api_endpoint = std::env::var("CODEX_API_ENDPOINT")
         .unwrap_or_else(|_| "https://api.openai.com/v1/chat/completions".to_string());
-    let model = std::env::var("CODEX_MODEL").unwrap_or_else(|_| "gpt-4".to_string());
+    let model = std::env::var("CODEX_MODEL").unwrap_or_else(|_| "gpt-5.1-codex-max".to_string());
 
     let codex_client = Arc::new(CodexClient::new(
         api_key.unwrap_or_default(),
