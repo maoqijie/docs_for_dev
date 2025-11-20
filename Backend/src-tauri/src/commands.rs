@@ -39,6 +39,12 @@ pub async fn send_message(
     session_id: String,
     content: String,
 ) -> Result<(), String> {
+    println!(
+        "[commands] send_message session_id={} content_preview={}",
+        session_id,
+        content.chars().take(80).collect::<String>()
+    );
+
     db.add_message(&session_id, "user", &content)
         .map_err(|e| format!("保存用户消息失败: {}", e))?;
 
@@ -60,7 +66,10 @@ pub async fn send_message(
             let _ = window_clone.emit("message-chunk", chunk);
         })
         .await
-        .map_err(|e| format!("API 调用失败: {}", e))?;
+        .map_err(|e| {
+            println!("[commands] codex 调用失败: {}", e);
+            format!("API 调用失败: {}", e)
+        })?;
 
     db.add_message(&session_id, "assistant", &response)
         .map_err(|e| format!("保存 AI 回复失败: {}", e))?;

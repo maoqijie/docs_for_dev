@@ -7,6 +7,11 @@ use tokio::{
     process::Command,
 };
 
+/// 简单日志函数，便于在 tauri 日志中看到关键步骤
+fn log_info(msg: &str) {
+    println!("[codex-client] {}", msg);
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
     pub role: String,
@@ -32,6 +37,16 @@ impl CodexClient {
     {
         let prompt = build_prompt(messages);
 
+        log_info(&format!(
+            "准备调用 codex，model={}，prompt-preview={}",
+            self.model,
+            prompt.chars().take(80).collect::<String>()
+        ));
+
+        if let Ok(path) = std::env::var("PATH") {
+            log_info(&format!("PATH={}", path));
+        }
+
         let mut command = Command::new("codex");
         // 注意：`--ask-for-approval` 是全局参数，必须放在 `exec` 之前，否则 CLI 会直接退出
         command
@@ -48,7 +63,9 @@ impl CodexClient {
             .stderr(Stdio::piped())
             .stdout(Stdio::piped());
 
-        let mut child = command.spawn().map_err(|e| anyhow!(e))?;
+        let mut child = command
+            .spawn()
+            .map_err(|e| anyhow!(format!("启动 codex 进程失败: {}", e)))?;
 
         // 异步收集 stderr，便于失败时输出详细错误
         let stderr_handle = child.stderr.take().map(|stderr| {
@@ -100,15 +117,13 @@ impl CodexClient {
         };
 
         if !status.success() {
-            if stderr_output.trim().is_empty() {
-                return Err(anyhow!("codex cli 退出失败: {}", status));
+            let detail = if stderr_output.trim().is_empty() {
+                format!("codex cli 退出失败: {}", status)
             } else {
-                return Err(anyhow!(
-                    "codex cli 退出失败: {} | {}",
-                    status,
-                    stderr_output.trim()
-                ));
-            }
+                format!("codex cli 退出失败: {} | {}", status, stderr_output.trim())
+            };
+            log_info(&detail);
+            return Err(anyhow!(detail));
         }
 
         Ok(full_content)
