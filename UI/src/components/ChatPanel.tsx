@@ -82,6 +82,9 @@ type SessionUiState = {
     rootElapsedMap: Record<string, number>;
     autoStatus: string;
     autoCycle: number;
+    autoTargetSessionId: string | null;
+    autoRunning: boolean;
+    autoAbort: boolean;
     pendingPrefill?: string;
 };
 
@@ -239,6 +242,9 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
             rootElapsedMap,
             autoStatus,
             autoCycle,
+            autoTargetSessionId,
+            autoRunning,
+            autoAbort,
             pendingPrefill,
         };
         persistAllSessionStates(all);
@@ -264,6 +270,9 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         setRootElapsedMap(state.rootElapsedMap || {});
         setAutoStatus(state.autoStatus || '');
         setAutoCycle(state.autoCycle || 1);
+        setAutoTargetSessionId(state.autoTargetSessionId || null);
+        setAutoRunning(state.autoRunning || false);
+        setAutoAbort(state.autoAbort || false);
         setPendingPrefill(state.pendingPrefill);
         return true;
     };
@@ -277,10 +286,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         setError(null);
         setIsLoading(false);
         setIsMessagesLoading(true);
-        setAutoTargetSessionId(null);
-        setAutoRunning(false);
         setAutomationQueue(null);
-        setAutoAbort(false);
 
         const restored = restoreSessionState(sessionId);
         if (!restored) {
@@ -294,6 +300,9 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
             setRootElapsedMap({});
             setAutoStatus('');
             setAutoCycle(1);
+            setAutoTargetSessionId(null);
+            setAutoRunning(false);
+            setAutoAbort(false);
             setPendingPrefill(undefined);
         }
 
@@ -304,6 +313,27 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
     useEffect(() => {
         localStorage.setItem('codex-doc-base', docBasePath);
     }, [docBasePath]);
+
+    useEffect(() => {
+        persistSessionState(sessionId);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [
+        sessionId,
+        docBasePath,
+        docFiles,
+        autoConfig,
+        autoPromptLogs,
+        cycleLogs,
+        lastCycleMs,
+        sessionElapsedMs,
+        rootElapsedMap,
+        autoStatus,
+        autoCycle,
+        autoTargetSessionId,
+        autoRunning,
+        autoAbort,
+        pendingPrefill,
+    ]);
 
     useEffect(() => {
         if (automationQueue) {
