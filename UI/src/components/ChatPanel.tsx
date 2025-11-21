@@ -364,8 +364,13 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
     ) => {
         const docBlock = buildDocBlock(docFiles, docBasePath);
         const workdir = docBasePath?.trim() || './';
-        const workdirHint = `工作目录: ${workdir}\n当你需要修改/创建文件时，请在此目录下使用文档给出的相对路径进行操作。`;
-        const fixDirective = `若发现实现与文档不符，请立即在工作目录内按文档相对路径直接修改/创建文件完成修复，不要仅给检查结论；修复完毕请输出完成标记：${customConfig.completionSignal.trim() || '已完全根据文档完成'}。`;
+        const workdirHint = `工作目录: ${workdir}（若包含 ~ 请先展开为绝对路径）\n所有文件操作必须在该目录下，使用文档提供的相对路径。`;
+        const fixDirective = [
+            '若发现实现与文档不符，必须直接修改/创建文件完成修复，不要只给检查结论。',
+            '请输出具体文件路径和补丁/代码段或需执行的命令，并在修复后简要总结变更。',
+            '若因权限/信息不足无法修改，说明原因并不要输出完成标记。',
+            `只有在确认无需修改或修复已完成且输出标记「${customConfig.completionSignal.trim() || '已完全根据文档完成'}」时才视为完成。`,
+        ].join('\\n');
 
         let promptBody = template.includes('{documents}')
             ? template.replace('{documents}', docBlock || '（未选择文档，请先选择）')
