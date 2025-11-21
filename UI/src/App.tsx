@@ -8,6 +8,12 @@ import { Plus } from 'lucide-react';
 import { Button } from './components/ui/button';
 import { motion } from 'framer-motion';
 
+const debugEnabled = false;
+const debugLog = (...args: unknown[]) => {
+  if (!debugEnabled) return;
+  console.log(...args);
+};
+
 function App() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
@@ -80,7 +86,7 @@ function App() {
       return m !== 'doc-dev';
     });
 
-    console.log('🔍 [DEBUG] 第一层过滤（模式）后:', modeFiltered.length, '个会话');
+    debugLog('🔍 [DEBUG] 第一层过滤（模式）后:', modeFiltered.length, '个会话');
 
     // 第二层：只显示根会话（隐藏自动创建的子会话）
     const rootFiltered = modeFiltered.filter((s) => {
@@ -90,14 +96,14 @@ function App() {
       const isRoot = !root || root === s.id;
 
       if (!isRoot) {
-        console.log('🔍 [DEBUG] 隐藏子会话:', s.title, '(id:', s.id, ', root:', root, ')');
+        debugLog('🔍 [DEBUG] 隐藏子会话:', s.title, '(id:', s.id, ', root:', root, ')');
       }
 
       return isRoot;
     });
 
-    console.log('🔍 [DEBUG] 第二层过滤（根会话）后:', rootFiltered.length, '个会话');
-    console.log('🔍 [DEBUG] 最终显示:', rootFiltered.map(s => ({ title: s.title, id: s.id.substring(0, 8) })));
+    debugLog('🔍 [DEBUG] 第二层过滤（根会话）后:', rootFiltered.length, '个会话');
+    debugLog('🔍 [DEBUG] 最终显示:', rootFiltered.map(s => ({ title: s.title, id: s.id.substring(0, 8) })));
 
     return rootFiltered;
   }, [sessions, sessionModes, sessionRoots, mode]);
@@ -109,11 +115,11 @@ function App() {
   const loadSessions = async () => {
     try {
       const data = await getSessions();
-      console.log('🔍 [DEBUG] 从数据库加载的会话数量:', data.length);
-      console.log('🔍 [DEBUG] 会话列表:', data.map(s => ({ id: s.id, title: s.title })));
-      console.log('🔍 [DEBUG] 当前模式:', mode);
-      console.log('🔍 [DEBUG] sessionModes 映射:', sessionModes);
-      console.log('🔍 [DEBUG] sessionRoots 映射:', sessionRoots);
+      debugLog('🔍 [DEBUG] 从数据库加载的会话数量:', data.length);
+      debugLog('🔍 [DEBUG] 会话列表:', data.map(s => ({ id: s.id, title: s.title })));
+      debugLog('🔍 [DEBUG] 当前模式:', mode);
+      debugLog('🔍 [DEBUG] sessionModes 映射:', sessionModes);
+      debugLog('🔍 [DEBUG] sessionRoots 映射:', sessionRoots);
 
       setSessions(data);
       // 为缺失 root 的会话补全自身为 root
@@ -126,7 +132,7 @@ function App() {
         }
       });
       if (rootsChanged) {
-        console.log('🔍 [DEBUG] 补全后的 sessionRoots:', patchedRoots);
+        debugLog('🔍 [DEBUG] 补全后的 sessionRoots:', patchedRoots);
         persistSessionRoots(patchedRoots);
       }
       if (data.length === 0) {

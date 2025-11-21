@@ -264,6 +264,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
             state = { ...state, rootId };
             sessionStateRef.current[id] = state;
             void setSessionState(id, JSON.stringify(state));
+            setStateVersion((v) => v + 1);
         }
 
         setDocBasePath(state.docBasePath || '');
@@ -312,8 +313,17 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
     useEffect(() => {
         let cancelled = false;
         (async () => {
+            const prevRootId = prevSessionIdRef.current ? resolveRootId(prevSessionIdRef.current) : null;
+            const currentRootId = resolveRootId(sessionId);
+
             // 保存上一个会话的前端状态
             await persistSessionState(prevSessionIdRef.current);
+
+            // 不同任务根切换时，清空内存状态，避免跨任务串台
+            if (prevRootId && prevRootId !== currentRootId) {
+                sessionStateRef.current = {};
+                setStateVersion((v) => v + 1);
+            }
 
             // 切换会话时禁用自动运行并清理运行时状态
             setStreamingContent('');
