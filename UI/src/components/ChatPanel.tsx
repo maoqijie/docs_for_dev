@@ -99,11 +99,6 @@ const buildDocBlock = (docs: DocFile[], baseDir: string) => {
         .join('\n\n');
 };
 
-const matchesCompletion = (message: Message | null, signal: string) => {
-    const trimmed = signal.trim();
-    return Boolean(trimmed) && Boolean(message?.content?.includes(trimmed));
-};
-
 const notifyCompletion = (text: string) => {
     if (typeof Notification === 'undefined') return;
     if (Notification.permission === 'granted') {
@@ -195,6 +190,13 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         } finally {
             setIsMessagesLoading(false);
         }
+    };
+
+    const messageHasCompletion = (message: Message | null, signal: string) => {
+        const trimmed = signal.trim();
+        if (!trimmed) return false;
+        // 仅检查当前轮的最后回复，修复阶段（下一步）不采纳
+        return Boolean(message?.content?.includes(trimmed));
     };
 
     const sendContent = async (
@@ -423,7 +425,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                 appendLog(`第 ${cycle} 轮：手动停止，已终止后续请求。`);
                 return;
             }
-            if (matchesCompletion(firstReply, config.completionSignal)) {
+            if (messageHasCompletion(firstReply, config.completionSignal)) {
                 handleAutomationSuccess(config, cycle);
                 return;
             }
@@ -440,10 +442,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                     appendLog(`第 ${cycle} 轮：手动停止，已终止后续请求。`);
                     return;
                 }
-                if (matchesCompletion(followReply, config.completionSignal)) {
-                    handleAutomationSuccess(config, cycle);
-                    return;
-                }
+                // 修复阶段输出的完成标记不采纳，需下一轮检查阶段确认
             }
 
             await handleAutomationFailure(config, cycle);
