@@ -517,11 +517,6 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
             if (!picked.length) return;
 
             const absPaths = picked.map((p) => p.path);
-            const commonDir = inferCommonDir(absPaths);
-
-            if (!docBasePath && commonDir) {
-                setDocBasePath(commonDir);
-            }
 
             setDocFiles((prev) => {
                 const merged = [...prev];
