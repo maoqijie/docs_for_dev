@@ -32,13 +32,16 @@ function App() {
     }
   };
 
-  const handleNewSession = async () => {
+  const handleNewSession = async (title?: string): Promise<Session | undefined> => {
     try {
-      const session = await createSession('新对话');
-      setSessions([session, ...sessions]);
+      const defaultTitle = mode === 'doc-dev' ? '新任务' : '新对话';
+      const session = await createSession(title || defaultTitle);
+      setSessions((prev) => [session, ...prev]);
       setCurrentSessionId(session.id);
+      return session;
     } catch (error) {
       console.error('创建会话失败:', error);
+      return undefined;
     }
   };
 
@@ -55,11 +58,13 @@ function App() {
   const handleDeleteSession = async (sessionId: string) => {
     try {
       await deleteSession(sessionId);
-      setSessions((prev) => prev.filter((s) => s.id !== sessionId));
-      if (currentSessionId === sessionId) {
-        const next = sessions.find((s) => s.id !== sessionId);
-        setCurrentSessionId(next?.id || null);
-      }
+      setSessions((prev) => {
+        const filtered = prev.filter((s) => s.id !== sessionId);
+        if (currentSessionId === sessionId) {
+          setCurrentSessionId(filtered[0]?.id || null);
+        }
+        return filtered;
+      });
       loadSessions();
     } catch (error) {
       console.error('删除会话失败:', error);
@@ -124,10 +129,11 @@ function App() {
             <div className="flex-1 flex flex-col relative overflow-hidden">
               {currentSessionId ? (
                 <ChatPanel
-                  key={currentSessionId}
                   sessionId={currentSessionId}
                   mode={mode || 'doc-dev'}
                   onModeBack={handleBackToModePicker}
+                  onCreateSession={handleNewSession}
+                  onSessionSwitch={setCurrentSessionId}
                 />
               ) : (
                 <div className="flex-1 flex items-center justify-center bg-gradient-to-b from-background to-muted/20">
@@ -147,23 +153,25 @@ function App() {
                       </p>
                     </div>
                     <div className="grid grid-cols-2 gap-4 text-left">
-                      <div
-                        className="p-4 rounded-xl bg-muted/50 border hover:bg-muted transition-colors cursor-pointer"
-                        onClick={handleNewSession}
-                      >
-                        <h3 className="font-semibold mb-1">编写代码</h3>
-                        <p className="text-sm text-muted-foreground">帮助我实现一个 React 组件...</p>
-                      </div>
-                      <div
-                        className="p-4 rounded-xl bg-muted/50 border hover:bg-muted transition-colors cursor-pointer"
-                        onClick={handleNewSession}
-                      >
-                        <h3 className="font-semibold mb-1">解释概念</h3>
-                        <p className="text-sm text-muted-foreground">什么是 React Server Components?</p>
-                      </div>
+                    <div
+                      className="p-4 rounded-xl bg-muted/50 border hover:bg-muted transition-colors cursor-pointer"
+                      onClick={() => handleNewSession(mode === 'doc-dev' ? '新的文档任务' : undefined)}
+                    >
+                      <h3 className="font-semibold mb-1">{mode === 'doc-dev' ? '启动任务' : '编写代码'}</h3>
+                      <p className="text-sm text-muted-foreground">
+                        {mode === 'doc-dev' ? '基于文档生成新任务并自动执行' : '帮助我实现一个 React 组件...'}
+                      </p>
                     </div>
-                    <Button
-                      onClick={handleNewSession}
+                    <div
+                      className="p-4 rounded-xl bg-muted/50 border hover:bg-muted transition-colors cursor-pointer"
+                      onClick={() => handleNewSession()}
+                    >
+                      <h3 className="font-semibold mb-1">{mode === 'doc-dev' ? '查看历史任务' : '解释概念'}</h3>
+                      <p className="text-sm text-muted-foreground">{mode === 'doc-dev' ? '浏览任务历史与自动化结果' : '什么是 React Server Components?'}</p>
+                    </div>
+                  </div>
+                  <Button
+                      onClick={() => handleNewSession()}
                       size="lg"
                       className="rounded-full px-8 shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-all hover:scale-105"
                     >

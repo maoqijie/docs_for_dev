@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { type Message, getMessages, sendMessage } from '../lib/api';
+import { useEffect, useRef, useState } from 'react';
+import { type Message, type Session, getMessages, sendMessage } from '../lib/api';
 import { MessageList } from './MessageList';
 import { InputBox } from './InputBox';
 import { motion } from 'framer-motion';
@@ -10,14 +10,57 @@ import {
     SelectTrigger,
     SelectValue,
 } from "./ui/select";
-import { Sparkles, BrainCircuit, Loader2, ChevronLeft } from 'lucide-react';
+import {
+    Sparkles,
+    BrainCircuit,
+    Loader2,
+    ChevronLeft,
+    FilePlus2,
+    FileText,
+    CheckCircle2,
+    AlertTriangle,
+    Repeat,
+    Bell,
+    Play,
+    StopCircle,
+    Wand2,
+} from 'lucide-react';
 import { Button } from './ui/button';
+import { Textarea } from './ui/textarea';
+import { Input } from './ui/input';
+import { cn } from '../lib/utils';
 
 interface ChatPanelProps {
     sessionId: string;
     mode: 'doc-dev' | 'general';
     onModeBack: () => void;
+    onCreateSession?: (title?: string) => Promise<Session | undefined>;
+    onSessionSwitch?: (id: string) => void;
 }
+
+type DocFile = {
+    path: string;
+    name: string;
+    size: number;
+    content: string;
+};
+
+type AutomationConfig = {
+    taskPrompt: string;
+    completionSignal: string;
+    nextStep: string;
+    autoRestartSession: boolean;
+    newSessionEachLoop: boolean;
+    maxCycles: number;
+    infiniteLoop: boolean;
+    notifyText: string;
+};
+
+type AutomationQueue = {
+    targetSessionId: string;
+    cycle: number;
+    config: AutomationConfig;
+};
 
 const MODELS = [
     { id: 'gpt-5.1-codex-max', name: 'Codex Max (GPT-5.1)' },
@@ -35,7 +78,45 @@ const THINKING_LEVELS = [
     { id: 'high', name: 'High Effort' },
 ];
 
-export function ChatPanel({ sessionId, mode, onModeBack }: ChatPanelProps) {
+const formatBytes = (bytes: number) => {
+    if (!bytes) return '0B';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    const idx = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+    const value = bytes / Math.pow(1024, idx);
+    return `${value.toFixed(value >= 10 ? 0 : 1)}${units[idx]}`;
+};
+
+const buildDocBlock = (docs: DocFile[]) => {
+    if (!docs.length) return '';
+    return docs
+        .map(
+            (doc, index) =>
+                `【文档${index + 1}: ${doc.name}】\n路径: ${doc.path}\n大小: ${formatBytes(doc.size)}\n内容:\n${doc.content.trim()}`
+        )
+        .join('\n\n');
+};
+
+const matchesCompletion = (message: Message | null, signal: string) => {
+    const trimmed = signal.trim();
+    return Boolean(trimmed) && Boolean(message?.content?.includes(trimmed));
+};
+
+const notifyCompletion = (text: string) => {
+    if (typeof Notification === 'undefined') return;
+    if (Notification.permission === 'granted') {
+        new Notification(text);
+        return;
+    }
+    if (Notification.permission !== 'denied') {
+        Notification.requestPermission().then((permission) => {
+            if (permission === 'granted') {
+                new Notification(text);
+            }
+        });
+    }
+};
+
+export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onSessionSwitch }: ChatPanelProps) {
     const [messages, setMessages] = useState<Message[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [isMessagesLoading, setIsMessagesLoading] = useState(true);
@@ -44,26 +125,56 @@ export function ChatPanel({ sessionId, mode, onModeBack }: ChatPanelProps) {
     const [thinkingDepth, setThinkingDepth] = useState('low');
     const [error, setError] = useState<string | null>(null);
 
-    // 加载会话消息
+    const [docFiles, setDocFiles] = useState<DocFile[]>([]);
+    const [isPickingDocs, setIsPickingDocs] = useState(false);
+    const docInputRef = useRef<HTMLInputElement>(null);
+    const [autoConfig, setAutoConfig] = useState<AutomationConfig>({
+        taskPrompt:
+            '帮我检查 {documents} 中描述的功能是否已经完全按文档实现，如果完全符合，请输出精确的完成标记。',
+        completionSignal: '【完成】',
+        nextStep:
+            '如果上一条没有给出完成标记，请继续补充缺口并再次输出相同的完成标记。',
+        autoRestartSession: true,
+        newSessionEachLoop: true,
+        maxCycles: 3,
+        infiniteLoop: false,
+        notifyText: '文档任务已完成',
+    });
+    const [autoRunning, setAutoRunning] = useState(false);
+    const [autoCycle, setAutoCycle] = useState(1);
+    const [autoStatus, setAutoStatus] = useState('');
+    const [automationQueue, setAutomationQueue] = useState<AutomationQueue | null>(null);
+    const [pendingPrefill, setPendingPrefill] = useState<string | undefined>(undefined);
+
     useEffect(() => {
+        setStreamingContent('');
+        setError(null);
         loadMessages();
     }, [sessionId]);
 
-    const loadMessages = async () => {
+    useEffect(() => {
+        if (automationQueue && sessionId === automationQueue.targetSessionId) {
+            runAutomationCycle(automationQueue.cycle, automationQueue.config);
+            setAutomationQueue(null);
+        }
+    }, [automationQueue, sessionId]);
+
+    const loadMessages = async (): Promise<Message[]> => {
         setIsMessagesLoading(true);
         try {
             const msgs = await getMessages(sessionId);
             setMessages(msgs);
-        } catch (error) {
-            console.error('加载消息失败:', error);
-            setError(error instanceof Error ? error.message : String(error));
+            return msgs;
+        } catch (err) {
+            console.error('加载消息失败:', err);
+            setError(err instanceof Error ? err.message : String(err));
+            return [];
         } finally {
             setIsMessagesLoading(false);
         }
     };
 
-    const handleSend = async (content: string) => {
-        // 1. 乐观更新 UI（立即显示用户消息）
+    const sendContent = async (content: string): Promise<Message | null> => {
         const userMessage: Message = {
             id: Date.now(),
             session_id: sessionId,
@@ -78,7 +189,6 @@ export function ChatPanel({ sessionId, mode, onModeBack }: ChatPanelProps) {
         setIsMessagesLoading(true);
 
         try {
-            // 2. 发送消息并接收流式响应（带模型与思考深度）
             const finalContent =
                 mode === 'doc-dev'
                     ? `【文档开发模式】请针对文档/开发相关需求输出结构化、可执行的步骤与示例。\n${content}`
@@ -88,19 +198,160 @@ export function ChatPanel({ sessionId, mode, onModeBack }: ChatPanelProps) {
                 setStreamingContent((prev) => prev + chunk);
             });
 
-            // 3. 重新加载消息（包含 AI 回复）
-            await loadMessages();
+            const updated = await loadMessages();
             setStreamingContent('');
-        } catch (error) {
-            console.error('发送消息失败:', error);
-            setError(error instanceof Error ? error.message : String(error));
+            const lastAssistant = [...updated].reverse().find((m) => m.role === 'assistant') ?? null;
+            return lastAssistant;
+        } catch (err) {
+            console.error('发送消息失败:', err);
+            setError(err instanceof Error ? err.message : String(err));
+            return null;
         } finally {
             setIsLoading(false);
             setIsMessagesLoading(false);
         }
     };
 
-    // 获取当前模型支持的思考深度选项
+    const handleSend = async (content: string) => {
+        await sendContent(content);
+    };
+
+    const handleDocFiles = async (files: FileList | null) => {
+        if (!files || files.length === 0) return;
+        setIsPickingDocs(true);
+        const tasks = Array.from(files).map(
+            (file) =>
+                new Promise<DocFile | null>((resolve) => {
+                    const reader = new FileReader();
+                    reader.onload = () =>
+                        resolve({
+                            path: file.name,
+                            name: file.name,
+                            size: file.size,
+                            content: typeof reader.result === 'string' ? reader.result : '',
+                        });
+                    reader.onerror = () => resolve(null);
+                    reader.readAsText(file);
+                })
+        );
+
+        const loaded = (await Promise.all(tasks)).filter(Boolean) as DocFile[];
+        if (loaded.length) {
+            setDocFiles((prev) => {
+                const merged = [...prev];
+                loaded.forEach((doc) => {
+                    const idx = merged.findIndex((item) => item.path === doc.path);
+                    if (idx >= 0) {
+                        merged[idx] = doc;
+                    } else {
+                        merged.push(doc);
+                    }
+                });
+                return merged;
+            });
+        }
+        setIsPickingDocs(false);
+    };
+
+    const handlePickDocs = () => {
+        docInputRef.current?.click();
+    };
+
+    const buildPromptWithDocs = (
+        template: string,
+        includeCompletionHint = true,
+        customConfig: AutomationConfig = autoConfig,
+    ) => {
+        const docBlock = buildDocBlock(docFiles);
+        let prompt = template.includes('{documents}')
+            ? template.replace('{documents}', docBlock || '（未选择文档，请先选择）')
+            : `${template}${docBlock ? `\n\n${docBlock}` : ''}`;
+
+        if (includeCompletionHint && customConfig.completionSignal.trim()) {
+            prompt = `${prompt}\n\n完成后请输出精确标记：${customConfig.completionSignal.trim()}，否则视为未完成。`;
+        }
+        return prompt;
+    };
+
+    const handlePrefillToInput = () => {
+        setPendingPrefill(buildPromptWithDocs(autoConfig.taskPrompt));
+    };
+
+    const startAutomation = async (cycle = 1) => {
+        const config = autoConfig;
+        // 若要求每轮新会话，先创建后切换再排队执行
+        if (config.newSessionEachLoop || config.autoRestartSession) {
+            if (onCreateSession && onSessionSwitch) {
+                setAutoStatus(`创建新会话用于第 ${cycle} 轮…`);
+                const newSession = await onCreateSession(`文档自动循环 ${cycle}`);
+                if (newSession) {
+                    setAutomationQueue({ targetSessionId: newSession.id, cycle, config });
+                    onSessionSwitch(newSession.id);
+                    return;
+                }
+            }
+        }
+
+        // 否则直接在当前会话执行
+        setAutomationQueue({ targetSessionId: sessionId, cycle, config });
+    };
+
+    const handleAutomationSuccess = (config: AutomationConfig, cycle: number) => {
+        setAutoStatus(`检测到完成标记「${config.completionSignal}」，在第 ${cycle} 轮完成。`);
+        setAutoRunning(false);
+        notifyCompletion(config.notifyText || '文档开发任务已完成');
+    };
+
+    const handleAutomationFailure = async (config: AutomationConfig, cycle: number) => {
+        const shouldContinue = config.autoRestartSession && (config.infiniteLoop || config.maxCycles > cycle);
+        if (shouldContinue && onCreateSession && onSessionSwitch) {
+            const next = cycle + 1;
+            const label = config.infiniteLoop ? `第 ${next} 轮` : `(${next}/${config.maxCycles})`;
+            setAutoStatus(`第 ${cycle} 轮未完成，准备新建会话继续 ${label}`);
+            const newSession = await onCreateSession(`文档自动循环 ${next}`);
+            if (newSession) {
+                setAutomationQueue({ targetSessionId: newSession.id, cycle: next, config });
+                onSessionSwitch(newSession.id);
+                setAutoRunning(false);
+                return;
+            }
+        }
+        setAutoStatus('未检测到完成标记，自动循环已停止');
+        setAutoRunning(false);
+    };
+
+    const runAutomationCycle = async (cycle = 1, configOverride?: AutomationConfig) => {
+        if (!sessionId || isLoading) return;
+        const config = configOverride || autoConfig;
+        setAutoRunning(true);
+        setAutoCycle(cycle);
+        setAutoStatus(`第 ${cycle} 轮：发送主查询…`);
+
+        try {
+            const firstReply = await sendContent(buildPromptWithDocs(config.taskPrompt, true, config));
+            if (matchesCompletion(firstReply, config.completionSignal)) {
+                handleAutomationSuccess(config, cycle);
+                return;
+            }
+
+            if (config.nextStep.trim()) {
+                setAutoStatus('未检测到标记，发送下一步指令…');
+                const followReply = await sendContent(buildPromptWithDocs(config.nextStep, true, config));
+                if (matchesCompletion(followReply, config.completionSignal)) {
+                    handleAutomationSuccess(config, cycle);
+                    return;
+                }
+            }
+
+            await handleAutomationFailure(config, cycle);
+        } catch (err) {
+            console.error('自动执行失败:', err);
+            setError(err instanceof Error ? err.message : String(err));
+            setAutoStatus('自动执行失败，请重试');
+            setAutoRunning(false);
+        }
+    };
+
     const currentThinkingLevels = model === 'gpt-5.1-codex-max'
         ? [...THINKING_LEVELS, { id: 'xhigh', name: 'Extra High Effort' }]
         : THINKING_LEVELS;
@@ -113,10 +364,8 @@ export function ChatPanel({ sessionId, mode, onModeBack }: ChatPanelProps) {
             animate={{ opacity: 1 }}
             className="flex flex-col h-full relative"
         >
-            {/* 顶部控制栏 - 紧贴内容左上方（模式已移到侧边栏） */}
             <div className="w-full px-4 pt-3">
                 <div className="flex flex-wrap gap-2 items-center">
-                    {/* 模型选择 */}
                     <Select value={model} onValueChange={setModel}>
                         <SelectTrigger className="w-[220px] bg-background/80 backdrop-blur-sm shadow-sm border-border/50 rounded-full h-9 px-4 transition-all hover:bg-accent/50">
                             <div className="flex items-center gap-2 truncate">
@@ -133,7 +382,6 @@ export function ChatPanel({ sessionId, mode, onModeBack }: ChatPanelProps) {
                         </SelectContent>
                     </Select>
 
-                    {/* 思考深度选择 */}
                     <Select value={thinkingDepth} onValueChange={setThinkingDepth}>
                         <SelectTrigger className="w-[160px] bg-background/80 backdrop-blur-sm shadow-sm border-border/50 rounded-full h-9 px-4 transition-all hover:bg-accent/50">
                             <div className="flex items-center gap-2">
@@ -152,8 +400,258 @@ export function ChatPanel({ sessionId, mode, onModeBack }: ChatPanelProps) {
                 </div>
             </div>
 
+            {mode === 'doc-dev' && (
+                <div className="w-full px-4 mt-2">
+                    <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="max-w-5xl mx-auto rounded-3xl border bg-card/80 backdrop-blur-md shadow-lg shadow-primary/5 p-4 space-y-4"
+                    >
+                        <div className="flex flex-wrap gap-3 items-start justify-between">
+                            <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                    <FileText className="h-5 w-5 text-primary" />
+                                    <span className="text-lg font-semibold">文档开发自动化</span>
+                                </div>
+                                <p className="text-sm text-muted-foreground">
+                                    选择文档→生成提示→自动调用 Codex，未输出完成标记则继续发送下一步并可在新会话循环重试。
+                                </p>
+                            </div>
+                            <div className="flex flex-wrap gap-2 text-xs">
+                                <span className="px-3 py-1 rounded-full bg-primary/10 text-primary border border-primary/20">
+                                    文档 {docFiles.length} / 完成标记 {autoConfig.completionSignal || '未设置'}
+                                </span>
+                                {autoRunning ? (
+                                    <span className="px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/30">
+                                        <Loader2 className="h-3 w-3 inline-block mr-1 animate-spin" />
+                                        自动循环进行中（第 {autoCycle} 轮）
+                                    </span>
+                                ) : (
+                                    <span className="px-3 py-1 rounded-full bg-muted text-muted-foreground border border-border">
+                                        待机
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="grid md:grid-cols-[2fr_1.15fr] gap-4">
+                            <div className="space-y-3">
+                                <div className="rounded-2xl border bg-muted/30 p-3">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="flex items-center gap-2 text-sm font-medium">
+                                                <FilePlus2 className="h-4 w-4" />
+                                                选择参考文档（可多选，自动插入提示）
+                                            </div>
+                                        <div className="flex gap-2">
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={handlePickDocs}
+                                                disabled={isPickingDocs}
+                                                className="rounded-full"
+                                            >
+                                                {isPickingDocs ? (
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                ) : (
+                                                    <>
+                                                        <Sparkles className="h-4 w-4 mr-1" />
+                                                        选择文档
+                                                    </>
+                                                )}
+                                            </Button>
+                                            {docFiles.length > 0 && (
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="rounded-full"
+                                                    onClick={() => setDocFiles([])}
+                                                >
+                                                    清空
+                                                </Button>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <input
+                                        ref={docInputRef}
+                                        type="file"
+                                        multiple
+                                        accept=".md,.txt,.json,.log,.markdown,.mdx"
+                                        className="hidden"
+                                        onChange={(e) => {
+                                            handleDocFiles(e.target.files);
+                                            if (e.target) e.target.value = '';
+                                        }}
+                                    />
+                                    <div className="flex flex-wrap gap-2 mt-3">
+                                        {docFiles.length === 0 && (
+                                            <span className="text-xs text-muted-foreground">尚未选择文档</span>
+                                        )}
+                                        {docFiles.map((doc) => (
+                                            <div
+                                                key={doc.path}
+                                                className="group flex items-center gap-2 px-3 py-2 rounded-xl border bg-background/80 shadow-sm"
+                                            >
+                                                <span className="text-xs font-medium truncate max-w-[140px]">
+                                                    {doc.name}
+                                                </span>
+                                                <span className="text-[10px] text-muted-foreground">{formatBytes(doc.size)}</span>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-7 w-7 opacity-0 group-hover:opacity-100"
+                                                    onClick={() => setDocFiles((prev) => prev.filter((item) => item.path !== doc.path))}
+                                                >
+                                                    <StopCircle className="h-3.5 w-3.5" />
+                                                </Button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="rounded-2xl border bg-muted/30 p-4 space-y-2">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2 text-sm font-medium">
+                                            <Wand2 className="h-4 w-4" />
+                                            任务提示词模板（支持 {`{documents}`} 自动替换）
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="rounded-full"
+                                                onClick={handlePrefillToInput}
+                                            >
+                                                插入到输入框
+                                            </Button>
+                                            <Button
+                                                size="sm"
+                                                className="rounded-full"
+                                                onClick={() => startAutomation(1)}
+                                                disabled={autoRunning || isLoading}
+                                            >
+                                                <Play className="h-4 w-4 mr-1" />
+                                                自动执行
+                                            </Button>
+                                        </div>
+                                    </div>
+                                    <Textarea
+                                        rows={6}
+                                        value={autoConfig.taskPrompt}
+                                        onChange={(e) =>
+                                            setAutoConfig((prev) => ({ ...prev, taskPrompt: e.target.value }))
+                                        }
+                                        className="bg-background/80"
+                                        placeholder="例如：帮我检查 {documents} 是否已完全实现，完成后输出 `完成`。"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="space-y-3">
+                                <div className="rounded-2xl border bg-muted/30 p-4 space-y-3">
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium">完成后输出标记</label>
+                                        <Input
+                                            value={autoConfig.completionSignal}
+                                            onChange={(e) =>
+                                                setAutoConfig((prev) => ({ ...prev, completionSignal: e.target.value }))
+                                            }
+                                            placeholder="如：完成 或 【完成】"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium">未完成时的下一步内容</label>
+                                        <Textarea
+                                            rows={4}
+                                            value={autoConfig.nextStep}
+                                            onChange={(e) =>
+                                                setAutoConfig((prev) => ({ ...prev, nextStep: e.target.value }))
+                                            }
+                                            className="bg-background/80"
+                                            placeholder="未给出完成标记时追加的指令，将自动附上文档内容"
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-medium">最大循环次数</label>
+                                            <div className="flex gap-2">
+                                                <Input
+                                                    type="number"
+                                                    min={1}
+                                                    value={autoConfig.maxCycles}
+                                                    disabled={autoConfig.infiniteLoop}
+                                                    onChange={(e) =>
+                                                        setAutoConfig((prev) => ({
+                                                            ...prev,
+                                                            maxCycles: Math.max(1, Number(e.target.value) || 1),
+                                                        }))
+                                                    }
+                                                />
+                                                <Button
+                                                    type="button"
+                                                    variant={autoConfig.infiniteLoop ? 'default' : 'outline'}
+                                                    size="sm"
+                                                    className="rounded-full whitespace-nowrap"
+                                                    onClick={() =>
+                                                        setAutoConfig((prev) => ({
+                                                            ...prev,
+                                                            infiniteLoop: !prev.infiniteLoop,
+                                                        }))
+                                                    }
+                                                >
+                                                    {autoConfig.infiniteLoop ? '∞ 无限循环' : '开启无限循环'}
+                                                </Button>
+                                            </div>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-medium">完成提醒文案</label>
+                                            <Input
+                                                value={autoConfig.notifyText}
+                                                onChange={(e) =>
+                                                    setAutoConfig((prev) => ({ ...prev, notifyText: e.target.value }))
+                                                }
+                                                placeholder="完成后系统通知内容"
+                                            />
+                                        </div>
+                                    </div>
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                                <Repeat className="h-4 w-4" />
+                                            {autoConfig.autoRestartSession
+                                                ? '每轮都会新建会话并在未完成时继续循环'
+                                                : '未完成时停止自动循环'}
+                                            </div>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                            className={cn('rounded-full border', autoConfig.autoRestartSession && 'border-primary text-primary')}
+                                                onClick={() =>
+                                                    setAutoConfig((prev) => ({
+                                                        ...prev,
+                                                        autoRestartSession: !prev.autoRestartSession,
+                                                        newSessionEachLoop: true,
+                                                    }))
+                                                }
+                                            >
+                                            {autoConfig.autoRestartSession ? '关闭自动新会话' : '开启自动新会话'}
+                                            </Button>
+                                        </div>
+                                    <div className="rounded-xl bg-background/70 border px-3 py-2 text-sm flex items-center gap-2">
+                                        {autoStatus ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : <AlertTriangle className="h-4 w-4 text-muted-foreground" />}
+                                        <span className="text-muted-foreground">{autoStatus || '尚未开始自动循环，调整配置后点击自动执行。'}</span>
+                                    </div>
+                                    <div className="text-xs text-muted-foreground flex items-center gap-2">
+                                        <Bell className="h-3.5 w-3.5" />
+                                        检测到完成标记后会发送系统通知并停止循环。
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </motion.div>
+                </div>
+            )}
+
             {showTopLoader && (
-                <div className="max-w-4xl mx-auto w-full px-4 mt-10 mb-2">
+                <div className="max-w-4xl mx-auto w-full px-4 mt-6 mb-2">
                     <div className="flex items-center gap-3 bg-muted/40 border border-border/60 rounded-xl px-4 py-3 shadow-sm animate-pulse">
                         <Loader2 className="h-5 w-5 animate-spin text-primary" />
                         <div className="leading-tight">
@@ -183,9 +681,16 @@ export function ChatPanel({ sessionId, mode, onModeBack }: ChatPanelProps) {
                     发送失败：{error}
                 </div>
             )}
-            <InputBox onSend={handleSend} disabled={isLoading} />
+            {mode !== 'doc-dev' && (
+                <InputBox
+                    onSend={handleSend}
+                    disabled={isLoading}
+                    sessionId={sessionId}
+                    prefill={pendingPrefill}
+                    onPrefillConsumed={() => setPendingPrefill(undefined)}
+                />
+            )}
 
-            {/* 左下角返回按钮 */}
             <div className="fixed left-4 bottom-4 z-20">
                 <Button
                     variant="secondary"

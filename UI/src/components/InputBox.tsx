@@ -8,6 +8,11 @@ import { cn } from '../lib/utils';
 interface InputBoxProps {
     onSend: (content: string) => void;
     disabled: boolean;
+    /** 绑定当前会话，切换时重置输入与附件 */
+    sessionId: string;
+    /** 程序化填充内容，便于将模板/文档注入输入框 */
+    prefill?: string;
+    onPrefillConsumed?: () => void;
 }
 
 type Attachment = {
@@ -19,7 +24,7 @@ type Attachment = {
     isImage: boolean;
 };
 
-export function InputBox({ onSend, disabled }: InputBoxProps) {
+export function InputBox({ onSend, disabled, sessionId, prefill, onPrefillConsumed }: InputBoxProps) {
     const [input, setInput] = useState('');
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -111,6 +116,23 @@ export function InputBox({ onSend, disabled }: InputBoxProps) {
             textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
         }
     }, [input]);
+
+    // 程序化填充
+    useEffect(() => {
+        if (prefill !== undefined) {
+            setInput(prefill);
+            onPrefillConsumed?.();
+        }
+    }, [prefill, onPrefillConsumed]);
+
+    // 会话切换时重置输入状态
+    useEffect(() => {
+        setInput('');
+        setAttachments([]);
+        if (textareaRef.current) {
+            textareaRef.current.style.height = 'auto';
+        }
+    }, [sessionId]);
 
     return (
         <div className="p-6 bg-gradient-to-t from-background via-background to-transparent">

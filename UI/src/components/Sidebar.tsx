@@ -11,7 +11,7 @@ interface SidebarProps {
     sessions: Session[];
     currentSessionId: string | null;
     onSessionSelect: (id: string) => void;
-    onNewSession: () => void;
+    onNewSession: (title?: string) => Promise<Session | undefined> | void;
     onDeleteSession: (id: string) => void;
     mode: 'doc-dev' | 'general';
 }
@@ -61,12 +61,12 @@ export function Sidebar({
                 </div>
 
                 <Button
-                    onClick={onNewSession}
+                    onClick={() => onNewSession()}
                     className="w-full rounded-xl shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-all duration-300 bg-gradient-to-r from-primary to-purple-600 hover:scale-[1.02]"
                     size="lg"
                 >
                     <Plus className="mr-2 h-5 w-5" />
-                    新建对话
+                    {mode === 'doc-dev' ? '新建任务' : '新建对话'}
                 </Button>
             </div>
 
