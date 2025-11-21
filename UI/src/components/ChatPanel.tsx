@@ -191,6 +191,7 @@ const notifyCompletion = (text: string) => {
 };
 
 export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMarkSessionRoot, sessionRoots }: ChatPanelProps) {
+    const sessionStateRef = useRef<Record<string, SessionUiState>>(loadAllSessionStates());
     const [messages, setMessages] = useState<Message[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [isMessagesLoading, setIsMessagesLoading] = useState(true);
@@ -227,7 +228,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
 
     const persistSessionState = (id: string | null) => {
         if (!id) return;
-        const all = loadAllSessionStates();
+        const all = { ...sessionStateRef.current };
         all[id] = {
             docBasePath,
             docFiles: docFiles.map(({ path, name, size, relativePath, absPath }) => ({
@@ -250,12 +251,12 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
             autoAbort,
             pendingPrefill,
         };
+        sessionStateRef.current = all;
         persistAllSessionStates(all);
     };
 
     const restoreSessionState = (id: string) => {
-        const all = loadAllSessionStates();
-        const state = all[id];
+        const state = sessionStateRef.current[id];
         if (!state) return false;
 
         setDocBasePath(state.docBasePath || '');
@@ -337,6 +338,13 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         autoAbort,
         pendingPrefill,
     ]);
+
+    useEffect(() => {
+        return () => {
+            persistSessionState(sessionId);
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     useEffect(() => {
         if (automationQueue) {
