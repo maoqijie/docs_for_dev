@@ -3,7 +3,7 @@ import { Button } from './ui/button';
 import { ScrollArea } from './ui/scroll-area';
 import { Separator } from './ui/separator';
 import { cn, formatDate } from '../lib/utils';
-import { Plus, MessageSquare, Trash2, Moon, Sun, Sparkles, Pencil, Check, X } from 'lucide-react';
+import { Plus, MessageSquare, Trash2, Moon, Sun, Sparkles, Pencil, Check, X, Settings } from 'lucide-react';
 import { useTheme } from './ThemeProvider';
 import { motion } from 'framer-motion';
 import { useState } from 'react';
@@ -17,6 +17,8 @@ interface SidebarProps {
     onDeleteSession: (id: string) => void;
     onRenameSession: (id: string, title: string) => void;
     mode: 'doc-dev' | 'general';
+    currentView: 'chat' | 'templates';
+    onViewChange: (view: 'chat' | 'templates') => void;
 }
 
 export function Sidebar({
@@ -27,6 +29,8 @@ export function Sidebar({
     onDeleteSession,
     onRenameSession,
     mode,
+    currentView,
+    onViewChange,
 }: SidebarProps) {
     const { theme, setTheme } = useTheme();
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -65,18 +69,29 @@ export function Sidebar({
                             Codex AI
                         </h1>
                     </div>
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="rounded-full hover:bg-muted/50 transition-colors"
-                        onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-                    >
-                        {theme === 'dark' ? (
-                            <Sun className="h-5 w-5 text-yellow-500" />
-                        ) : (
-                            <Moon className="h-5 w-5 text-slate-700" />
-                        )}
-                    </Button>
+                    <div className="flex items-center gap-1">
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="rounded-full hover:bg-muted/50 transition-colors"
+                            onClick={() => onViewChange(currentView === 'chat' ? 'templates' : 'chat')}
+                            title={currentView === 'chat' ? '模板设置' : '返回聊天'}
+                        >
+                            <Settings className="h-5 w-5" />
+                        </Button>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="rounded-full hover:bg-muted/50 transition-colors"
+                            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                        >
+                            {theme === 'dark' ? (
+                                <Sun className="h-5 w-5 text-yellow-500" />
+                            ) : (
+                                <Moon className="h-5 w-5 text-slate-700" />
+                            )}
+                        </Button>
+                    </div>
                 </div>
 
                 <div className="flex items-center gap-2 px-2 py-2 rounded-xl border bg-background/70">

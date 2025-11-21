@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { type Session, getSessions, createSession, deleteSession, updateSessionTitle } from './lib/api';
 import { ChatPanel } from './components/ChatPanel';
 import { Sidebar } from './components/Sidebar';
+import { TemplateEditor } from './components/TemplateEditor';
 import { ThemeProvider } from './components/ThemeProvider';
 import { Plus } from 'lucide-react';
 import { Button } from './components/ui/button';
@@ -10,6 +11,7 @@ import { motion } from 'framer-motion';
 function App() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [currentView, setCurrentView] = useState<'chat' | 'templates'>('chat');
   const [sessionModes, setSessionModes] = useState<Record<string, 'doc-dev' | 'general'>>(() => {
     try {
       const raw = localStorage.getItem('codex-session-mode-map');
@@ -253,9 +255,13 @@ function App() {
               onDeleteSession={handleDeleteSession}
               onRenameSession={handleRenameSession}
               mode={mode || 'doc-dev'}
+              currentView={currentView}
+              onViewChange={setCurrentView}
             />
             <div className="flex-1 flex flex-col relative overflow-hidden">
-              {currentSessionId ? (
+              {currentView === 'templates' ? (
+                <TemplateEditor />
+              ) : currentSessionId ? (
                 <ChatPanel
                   sessionId={currentSessionId}
                   mode={mode || 'doc-dev'}
