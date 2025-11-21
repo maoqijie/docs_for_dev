@@ -89,12 +89,17 @@ const formatBytes = (bytes: number) => {
 };
 
 const formatDuration = (ms: number) => {
-    if (ms < 1000) return `${ms}ms`;
-    const s = ms / 1000;
-    if (s < 60) return `${s.toFixed(1)}s`;
-    const m = Math.floor(s / 60);
-    const sec = (s % 60).toFixed(0).padStart(2, '0');
-    return `${m}m${sec}s`;
+    if (ms <= 0) return '0s';
+    const totalSeconds = Math.floor(ms / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    const parts: string[] = [];
+    if (hours > 0) parts.push(`${hours}h`);
+    if (minutes > 0) parts.push(`${minutes}m`);
+    if (seconds > 0 || parts.length === 0) parts.push(`${seconds}s`);
+    return parts.join(' ');
 };
 
 const buildDocBlock = (docs: DocFile[], baseDir: string) => {
@@ -390,6 +395,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         setIsMessagesLoading(false);
         setStreamingContent('');
         appendLog('任务已手动停止，后续不再发送请求。');
+        setLastCycleMs(null);
     };
 
     const handleAutomationSuccess = (config: AutomationConfig, cycle: number) => {
@@ -846,7 +852,6 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                                         setSessionElapsedMs(0);
                                         setRootElapsedMap({});
                                     }}
-                                    disabled={autoLogs.length === 0 && autoPromptLogs.length === 0}
                                 >
                                     清空
                                 </Button>
