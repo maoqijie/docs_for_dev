@@ -25,6 +25,16 @@ impl DbManager {
         )?;
 
         conn.execute(
+            "CREATE TABLE IF NOT EXISTS session_states (
+                session_id TEXT PRIMARY KEY,
+                state TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+            )",
+            [],
+        )?;
+
+        conn.execute(
             "CREATE TABLE IF NOT EXISTS messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 session_id TEXT NOT NULL,
@@ -61,6 +71,29 @@ impl DbManager {
         )?;
 
         Ok(session)
+    }
+
+    pub fn upsert_session_state(&self, session_id: &str, state_json: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        let now = Utc::now().to_rfc3339();
+        conn.execute(
+            "INSERT INTO session_states (session_id, state, updated_at) VALUES (?1, ?2, ?3)
+             ON CONFLICT(session_id) DO UPDATE SET state = excluded.state, updated_at = excluded.updated_at",
+            params![session_id, state_json, now],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_session_state(&self, session_id: &str) -> Result<Option<String>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT state FROM session_states WHERE session_id = ?1")?;
+        let mut rows = stmt.query(params![session_id])?;
+        if let Some(row) = rows.next()? {
+            let state: String = row.get(0)?;
+            Ok(Some(state))
+        } else {
+            Ok(None)
+        }
     }
 
     pub fn get_all_sessions(&self) -> Result<Vec<Session>> {

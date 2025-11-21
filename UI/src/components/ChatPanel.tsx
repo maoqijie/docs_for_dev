@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { type Message, type Session, getMessages, sendMessage, pickDocuments, pickWorkdir } from '../lib/api';
+import { type Message, type Session, getMessages, sendMessage, pickDocuments, pickWorkdir, getSessionState, setSessionState } from '../lib/api';
 import { MessageList } from './MessageList';
 import { InputBox } from './InputBox';
 import { motion } from 'framer-motion';
@@ -90,8 +90,6 @@ type SessionUiState = {
     pendingPrefill?: string;
 };
 
-const SESSION_STATE_STORAGE_KEY = 'codex-session-state';
-
 const defaultAutomationConfig = (): AutomationConfig => ({
     taskPrompt:
         '帮我检查 {documents} 中描述的功能是否已经完全按文档实现，如果完全符合，请输出精确的完成标记。',
@@ -104,27 +102,6 @@ const defaultAutomationConfig = (): AutomationConfig => ({
     infiniteLoop: false,
     notifyText: '文档任务已完成',
 });
-
-const loadAllSessionStates = (): Record<string, SessionUiState> => {
-    try {
-        const raw = localStorage.getItem(SESSION_STATE_STORAGE_KEY);
-        if (!raw) return {};
-        const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed === 'object') return parsed;
-        return {};
-    } catch (err) {
-        console.error('读取会话前端状态失败', err);
-        return {};
-    }
-};
-
-const persistAllSessionStates = (data: Record<string, SessionUiState>) => {
-    try {
-        localStorage.setItem(SESSION_STATE_STORAGE_KEY, JSON.stringify(data));
-    } catch (err) {
-        console.error('保存会话前端状态失败', err);
-    }
-};
 
 const MODELS = [
     { id: 'gpt-5.1-codex-max', name: 'Codex Max (GPT-5.1)' },
@@ -191,7 +168,7 @@ const notifyCompletion = (text: string) => {
 };
 
 export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMarkSessionRoot, sessionRoots }: ChatPanelProps) {
-    const sessionStateRef = useRef<Record<string, SessionUiState>>(loadAllSessionStates());
+    const sessionStateRef = useRef<Record<string, SessionUiState>>({});
     const [messages, setMessages] = useState<Message[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [isMessagesLoading, setIsMessagesLoading] = useState(true);
@@ -226,7 +203,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         return sessionRoots[id] || id;
     };
 
-    const persistSessionState = (id: string | null) => {
+    const persistSessionState = async (id: string | null) => {
         if (!id) return;
         const all = { ...sessionStateRef.current };
         all[id] = {
@@ -252,11 +229,28 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
             pendingPrefill,
         };
         sessionStateRef.current = all;
-        persistAllSessionStates(all);
+        try {
+            await setSessionState(id, JSON.stringify(all[id]));
+        } catch (err) {
+            console.error('保存会话前端状态失败', err);
+        }
     };
 
-    const restoreSessionState = (id: string) => {
-        const state = sessionStateRef.current[id];
+    const restoreSessionState = async (id: string) => {
+        // 先看看内存缓存
+        let state = sessionStateRef.current[id];
+        if (!state) {
+            const remote = await getSessionState(id);
+            if (remote) {
+                try {
+                    state = JSON.parse(remote) as SessionUiState;
+                    sessionStateRef.current[id] = state;
+                } catch (err) {
+                    console.error('解析会话状态失败', err);
+                }
+            }
+        }
+
         if (!state) return false;
 
         setDocBasePath(state.docBasePath || '');
@@ -283,7 +277,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
 
     useEffect(() => {
         // 先保存上一个会话的前端状态
-        persistSessionState(prevSessionIdRef.current);
+        void persistSessionState(prevSessionIdRef.current);
 
         // 切换会话时禁用自动运行并清理运行时状态
         setStreamingContent('');
@@ -319,7 +313,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
     }, [docBasePath]);
 
     useEffect(() => {
-        persistSessionState(sessionId);
+        void persistSessionState(sessionId);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [
         sessionId,
@@ -341,7 +335,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
 
     useEffect(() => {
         return () => {
-            persistSessionState(sessionId);
+            void persistSessionState(sessionId);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);

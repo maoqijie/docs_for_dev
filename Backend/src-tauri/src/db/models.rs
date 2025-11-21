@@ -24,6 +24,13 @@ pub struct SessionWithMessages {
     pub messages: Vec<Message>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionStateRecord {
+    pub session_id: String,
+    pub state: String,
+    pub updated_at: DateTime<Utc>,
+}
+
 impl Session {
     pub fn new(title: String) -> Self {
         Self {

@@ -146,3 +146,23 @@ export async function pickWorkdir(): Promise<string | null> {
         return null;
     }
 }
+
+// ==================== 会话前端状态持久化 ====================
+
+export async function getSessionState(sessionId: string): Promise<string | null> {
+    try {
+        const result = await invoke<string | null>('get_session_state', { sessionId });
+        return result ?? null;
+    } catch (error) {
+        console.error('get_session_state 调用失败', error);
+        return null;
+    }
+}
+
+export async function setSessionState(sessionId: string, state: string): Promise<void> {
+    try {
+        await invoke('set_session_state', { sessionId, state });
+    } catch (error) {
+        console.error('set_session_state 调用失败', error);
+    }
+}

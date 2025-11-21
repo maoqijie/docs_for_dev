@@ -48,6 +48,8 @@ fn main() {
             commands::send_message,
             commands::delete_session,
             commands::update_session_title,
+            commands::get_session_state,
+            commands::set_session_state,
             commands::list_templates,
             commands::get_template,
             commands::render_template,

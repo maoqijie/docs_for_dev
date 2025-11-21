@@ -208,6 +208,25 @@ pub async fn pick_workdir(window: Window) -> Result<Option<String>, String> {
     }
 }
 
+#[tauri::command]
+pub async fn get_session_state(
+    db: State<'_, Arc<DbManager>>,
+    session_id: String,
+) -> Result<Option<String>, String> {
+    db.get_session_state(&session_id)
+        .map_err(|e| format!("获取会话状态失败: {}", e))
+}
+
+#[tauri::command]
+pub async fn set_session_state(
+    db: State<'_, Arc<DbManager>>,
+    session_id: String,
+    state: String,
+) -> Result<(), String> {
+    db.upsert_session_state(&session_id, &state)
+        .map_err(|e| format!("保存会话状态失败: {}", e))
+}
+
 #[derive(Serialize)]
 pub struct PickedDocument {
     path: String,
