@@ -88,6 +88,15 @@ const formatBytes = (bytes: number) => {
     return `${value.toFixed(value >= 10 ? 0 : 1)}${units[idx]}`;
 };
 
+const formatDuration = (ms: number) => {
+    if (ms < 1000) return `${ms}ms`;
+    const s = ms / 1000;
+    if (s < 60) return `${s.toFixed(1)}s`;
+    const m = Math.floor(s / 60);
+    const sec = (s % 60).toFixed(0).padStart(2, '0');
+    return `${m}m${sec}s`;
+};
+
 const buildDocBlock = (docs: DocFile[], baseDir: string) => {
     if (!docs.length) return '';
     const dir = baseDir?.trim() || '.';
@@ -150,6 +159,9 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
     const [autoTargetSessionId, setAutoTargetSessionId] = useState<string | null>(null);
     const [autoAbort, setAutoAbort] = useState(false);
     const [autoPromptLogs, setAutoPromptLogs] = useState<string[]>([]);
+    const [lastCycleMs, setLastCycleMs] = useState<number | null>(null);
+    const [sessionElapsedMs, setSessionElapsedMs] = useState(0);
+    const [rootElapsedMap, setRootElapsedMap] = useState<Record<string, number>>({});
 
     const resolveRootId = (id: string) => {
         if (!sessionRoots) return id;
@@ -253,6 +265,16 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         const entry = text.trim();
         if (!entry) return;
         setAutoLogs((prev) => [entry, ...prev].slice(0, 50));
+    };
+
+    const recordElapsed = (elapsed: number) => {
+        setLastCycleMs(elapsed);
+        setSessionElapsedMs((prev) => prev + elapsed);
+        const root = resolveRootId(autoTargetSessionId || sessionId);
+        setRootElapsedMap((prev) => {
+            const nextTotal = (prev[root] || 0) + elapsed;
+            return { ...prev, [root]: nextTotal };
+        });
     };
 
     const appendPromptLog = (text: string) => {
@@ -415,6 +437,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
 
         try {
             const target = autoTargetSessionId || sessionId;
+            const startedAt = Date.now();
             const firstReply = await sendContent(buildPromptWithDocs(config.taskPrompt, true, config), target, true);
             if (firstReply?.content) {
                 appendLog(`第 ${cycle} 轮主查询回复：${firstReply.content}`);
@@ -423,9 +446,11 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                 setAutoRunning(false);
                 setAutoStatus('已停止');
                 appendLog(`第 ${cycle} 轮：手动停止，已终止后续请求。`);
+                recordElapsed(Date.now() - startedAt);
                 return;
             }
             if (messageHasCompletion(firstReply, config.completionSignal)) {
+                recordElapsed(Date.now() - startedAt);
                 handleAutomationSuccess(config, cycle);
                 return;
             }
@@ -440,11 +465,13 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                     setAutoRunning(false);
                     setAutoStatus('已停止');
                     appendLog(`第 ${cycle} 轮：手动停止，已终止后续请求。`);
+                    recordElapsed(Date.now() - startedAt);
                     return;
                 }
                 // 修复阶段输出的完成标记不采纳，需下一轮检查阶段确认
             }
 
+            recordElapsed(Date.now() - startedAt);
             await handleAutomationFailure(config, cycle);
         } catch (err) {
             console.error('自动执行失败:', err);
@@ -800,7 +827,14 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                             <div className="flex items-center gap-2 text-sm font-medium">
                                 自动执行结果记录
                             </div>
-                            <div className="flex gap-2">
+                            <div className="flex gap-2 text-xs text-muted-foreground items-center">
+                                {lastCycleMs !== null && (
+                                    <span>本轮 {formatDuration(lastCycleMs)}</span>
+                                )}
+                                <span>会话累计 {formatDuration(sessionElapsedMs)}</span>
+                                <span>
+                                    任务累计 {formatDuration(rootElapsedMap[resolveRootId(autoTargetSessionId || sessionId)] || sessionElapsedMs)}
+                                </span>
                                 <Button
                                     variant="ghost"
                                     size="sm"
@@ -808,6 +842,9 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                                     onClick={() => {
                                         setAutoLogs([]);
                                         setAutoPromptLogs([]);
+                                        setLastCycleMs(null);
+                                        setSessionElapsedMs(0);
+                                        setRootElapsedMap({});
                                     }}
                                     disabled={autoLogs.length === 0 && autoPromptLogs.length === 0}
                                 >
