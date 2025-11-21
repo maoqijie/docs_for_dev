@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { type Message, type Session, getMessages, sendMessage, pickDocuments, pickWorkdir, getSessionState, setSessionState } from '../lib/api';
 import { MessageList } from './MessageList';
 import { InputBox } from './InputBox';
@@ -169,6 +169,7 @@ const notifyCompletion = (text: string) => {
 
 export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMarkSessionRoot, sessionRoots }: ChatPanelProps) {
     const sessionStateRef = useRef<Record<string, SessionUiState>>({});
+    const [stateVersion, setStateVersion] = useState(0);
     const [messages, setMessages] = useState<Message[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [isMessagesLoading, setIsMessagesLoading] = useState(true);
@@ -229,6 +230,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
             pendingPrefill,
         };
         sessionStateRef.current = all;
+        setStateVersion((v) => v + 1);
         try {
             await setSessionState(id, JSON.stringify(all[id]));
         } catch (err) {
@@ -245,6 +247,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                 try {
                     state = JSON.parse(remote) as SessionUiState;
                     sessionStateRef.current[id] = state;
+                    setStateVersion((v) => v + 1);
                 } catch (err) {
                     console.error('解析会话状态失败', err);
                 }
@@ -275,37 +278,69 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         return true;
     };
 
-    useEffect(() => {
-        // 先保存上一个会话的前端状态
-        void persistSessionState(prevSessionIdRef.current);
+    const warmRootStates = async () => {
+        if (!sessionRoots) return;
+        const rootId = resolveRootId(sessionId);
+        const relatedIds = Object.keys(sessionRoots).filter((sid) => resolveRootId(sid) === rootId);
+        if (!relatedIds.includes(sessionId)) relatedIds.push(sessionId);
 
-        // 切换会话时禁用自动运行并清理运行时状态
-        setStreamingContent('');
-        setError(null);
-        setIsLoading(false);
-        setIsMessagesLoading(true);
-        setAutomationQueue(null);
-
-        const restored = restoreSessionState(sessionId);
-        if (!restored) {
-            setDocBasePath('');
-            setDocFiles([]);
-            setAutoConfig(defaultAutomationConfig());
-            setAutoPromptLogs([]);
-            setCycleLogs({});
-            setLastCycleMs(null);
-            setSessionElapsedMs(0);
-            setRootElapsedMap({});
-            setAutoStatus('');
-            setAutoCycle(1);
-            setAutoTargetSessionId(null);
-            setAutoRunning(false);
-            setAutoAbort(false);
-            setPendingPrefill(undefined);
+        for (const sid of relatedIds) {
+            if (sessionStateRef.current[sid]) continue;
+            const remote = await getSessionState(sid);
+            if (remote) {
+                try {
+                    const parsed = JSON.parse(remote) as SessionUiState;
+                    sessionStateRef.current[sid] = parsed;
+                    setStateVersion((v) => v + 1);
+                } catch (err) {
+                    console.error('解析会话状态失败', err);
+                }
+            }
         }
+    };
 
-        loadMessages();
-        prevSessionIdRef.current = sessionId;
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            // 保存上一个会话的前端状态
+            await persistSessionState(prevSessionIdRef.current);
+
+            // 切换会话时禁用自动运行并清理运行时状态
+            setStreamingContent('');
+            setError(null);
+            setIsLoading(false);
+            setIsMessagesLoading(true);
+            setAutomationQueue(null);
+
+            const restored = await restoreSessionState(sessionId);
+            if (!restored) {
+                if (cancelled) return;
+                setDocBasePath('');
+                setDocFiles([]);
+                setAutoConfig(defaultAutomationConfig());
+                setAutoPromptLogs([]);
+                setCycleLogs({});
+                setLastCycleMs(null);
+                setSessionElapsedMs(0);
+                setRootElapsedMap({});
+                setAutoStatus('');
+                setAutoCycle(1);
+                setAutoTargetSessionId(null);
+                setAutoRunning(false);
+                setAutoAbort(false);
+                setPendingPrefill(undefined);
+            }
+
+            if (!cancelled) {
+                await warmRootStates();
+                await loadMessages();
+                prevSessionIdRef.current = sessionId;
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
     }, [sessionId]);
 
     useEffect(() => {
@@ -331,6 +366,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         autoRunning,
         autoAbort,
         pendingPrefill,
+        stateVersion,
     ]);
 
     useEffect(() => {
@@ -339,6 +375,37 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    const aggregatedPromptLogs = useMemo(() => {
+        const root = resolveRootId(sessionId);
+        const ids = Object.keys(sessionRoots || {}).filter((sid) => resolveRootId(sid) === root);
+        if (!ids.includes(sessionId)) ids.push(sessionId);
+        const logs: { sessionId: string; text: string }[] = [];
+        ids.forEach((sid) => {
+            const st = sessionStateRef.current[sid];
+            if (st?.autoPromptLogs?.length) {
+                st.autoPromptLogs.forEach((text) => logs.push({ sessionId: sid, text }));
+            }
+        });
+        return logs;
+    }, [sessionId, sessionRoots, stateVersion]);
+
+    const aggregatedCycleLogs = useMemo(() => {
+        const root = resolveRootId(sessionId);
+        const ids = Object.keys(sessionRoots || {}).filter((sid) => resolveRootId(sid) === root);
+        if (!ids.includes(sessionId)) ids.push(sessionId);
+        const result: { sessionId: string; cycleId: string; logs: string[] }[] = [];
+        ids.forEach((sid) => {
+            const st = sessionStateRef.current[sid];
+            if (st?.cycleLogs) {
+                Object.entries(st.cycleLogs).forEach(([cycleId, logs]) => {
+                    result.push({ sessionId: sid, cycleId, logs });
+                });
+            }
+        });
+        // 最新的 cycleId 优先，其次按 sessionId
+        return result.sort((a, b) => Number(b.cycleId) - Number(a.cycleId) || a.sessionId.localeCompare(b.sessionId));
+    }, [sessionId, sessionRoots, stateVersion]);
 
     useEffect(() => {
         if (automationQueue) {
@@ -458,10 +525,9 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
     const appendPromptLog = (text: string, cycleId: number = autoCycle) => {
         const entry = text.trim();
         if (!entry) return;
-        setCycleLogs((prev) => {
-            const current = prev[cycleId] || [];
-            const next = [`【提示】${entry}`, ...current].slice(0, 200);
-            return { ...prev, [cycleId]: next };
+        setAutoPromptLogs((prev) => {
+            const next = [`【提示】${entry}`, ...prev].slice(0, 200);
+            return next;
         });
     };
 
@@ -1096,13 +1162,13 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                         <div className="grid md:grid-cols-2 gap-3">
                             <div className="space-y-2">
                                 <div className="text-xs font-semibold text-muted-foreground">前端构造提示</div>
-                                {autoPromptLogs.length === 0 ? (
+                                {aggregatedPromptLogs.length === 0 ? (
                                     <p className="text-xs text-muted-foreground">暂无提示记录</p>
                                 ) : (
                                     <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
-                                        {autoPromptLogs.map((log, idx) => (
+                                        {aggregatedPromptLogs.map((log, idx) => (
                                             <div key={idx} className="text-xs text-foreground bg-background/80 border rounded-xl px-3 py-2 leading-relaxed whitespace-pre-wrap">
-                                                {log}
+                                                [{log.sessionId.slice(0, 8)}] {log.text}
                                             </div>
                                         ))}
                                     </div>
@@ -1110,24 +1176,24 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                             </div>
                             <div className="space-y-2">
                                 <div className="text-xs font-semibold text-muted-foreground">Codex 返回</div>
-                                {Object.keys(cycleLogs).length === 0 ? (
+                                {aggregatedCycleLogs.length === 0 ? (
                                     <p className="text-xs text-muted-foreground">还没有执行记录，点击“自动执行”后会在此累计展示每一轮的返回内容。</p>
                                 ) : (
                                     <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
-                                        {Object.entries(cycleLogs)
-                                            .sort((a, b) => Number(b[0]) - Number(a[0]))
-                                            .map(([cycleId, logs]) => (
-                                                <div key={cycleId} className="border rounded-xl bg-background/80">
-                                                    <div className="px-3 py-1 text-[11px] text-muted-foreground border-b">第 {cycleId} 轮</div>
-                                                    <div className="space-y-1 px-3 py-2">
-                                                        {logs.map((log, idx) => (
-                                                            <div key={idx} className="text-xs text-foreground leading-relaxed whitespace-pre-wrap">
-                                                                {log}
-                                                            </div>
-                                                        ))}
-                                                    </div>
+                                        {aggregatedCycleLogs.map((entry, idx) => (
+                                            <div key={`${entry.sessionId}-${entry.cycleId}-${idx}`} className="border rounded-xl bg-background/80">
+                                                <div className="px-3 py-1 text-[11px] text-muted-foreground border-b">
+                                                    [{entry.sessionId.slice(0, 8)}] 第 {entry.cycleId} 轮
                                                 </div>
-                                            ))}
+                                                <div className="space-y-1 px-3 py-2">
+                                                    {entry.logs.map((log, i) => (
+                                                        <div key={i} className="text-xs text-foreground leading-relaxed whitespace-pre-wrap">
+                                                            {log}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ))}
                                     </div>
                                 )}
                             </div>
