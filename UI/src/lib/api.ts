@@ -53,7 +53,7 @@ export async function updateSessionTitle(
     sessionId: string,
     title: string
 ): Promise<void> {
-    return await invoke('update_session_title', { session_id: sessionId, title });
+    return await invoke('update_session_title', { sessionId, session_id: sessionId, title });
 }
 
 // ==================== 消息管理 ====================

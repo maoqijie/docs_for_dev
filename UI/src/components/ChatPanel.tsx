@@ -64,6 +64,63 @@ type AutomationQueue = {
     config: AutomationConfig;
 };
 
+type PersistedDocFile = {
+    path: string;
+    name: string;
+    size: number;
+    relativePath: string;
+};
+
+type SessionUiState = {
+    docBasePath: string;
+    docFiles: PersistedDocFile[];
+    autoConfig: AutomationConfig;
+    autoPromptLogs: string[];
+    cycleLogs: Record<number, string[]>;
+    lastCycleMs: number | null;
+    sessionElapsedMs: number;
+    rootElapsedMap: Record<string, number>;
+    autoStatus: string;
+    autoCycle: number;
+    pendingPrefill?: string;
+};
+
+const SESSION_STATE_STORAGE_KEY = 'codex-session-state';
+
+const defaultAutomationConfig = (): AutomationConfig => ({
+    taskPrompt:
+        '帮我检查 {documents} 中描述的功能是否已经完全按文档实现，如果完全符合，请输出精确的完成标记。',
+    completionSignal: '已完全根据文档完成',
+    nextStep:
+        '继续根据文档完成',
+    autoRestartSession: true,
+    newSessionEachLoop: true,
+    maxCycles: 3,
+    infiniteLoop: false,
+    notifyText: '文档任务已完成',
+});
+
+const loadAllSessionStates = (): Record<string, SessionUiState> => {
+    try {
+        const raw = localStorage.getItem(SESSION_STATE_STORAGE_KEY);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') return parsed;
+        return {};
+    } catch (err) {
+        console.error('读取会话前端状态失败', err);
+        return {};
+    }
+};
+
+const persistAllSessionStates = (data: Record<string, SessionUiState>) => {
+    try {
+        localStorage.setItem(SESSION_STATE_STORAGE_KEY, JSON.stringify(data));
+    } catch (err) {
+        console.error('保存会话前端状态失败', err);
+    }
+};
+
 const MODELS = [
     { id: 'gpt-5.1-codex-max', name: 'Codex Max (GPT-5.1)' },
     { id: 'gpt-5.1-codex-mini', name: 'Codex Mini (GPT-5.1)' },
@@ -143,18 +200,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
     });
     const [isPickingDocs, setIsPickingDocs] = useState(false);
     const docInputRef = useRef<HTMLInputElement>(null);
-    const [autoConfig, setAutoConfig] = useState<AutomationConfig>({
-        taskPrompt:
-            '帮我检查 {documents} 中描述的功能是否已经完全按文档实现，如果完全符合，请输出精确的完成标记。',
-        completionSignal: '已完全根据文档完成',
-        nextStep:
-            '继续根据文档完成',
-        autoRestartSession: true,
-        newSessionEachLoop: true,
-        maxCycles: 3,
-        infiniteLoop: false,
-        notifyText: '文档任务已完成',
-    });
+    const [autoConfig, setAutoConfig] = useState<AutomationConfig>(() => defaultAutomationConfig());
     const [autoRunning, setAutoRunning] = useState(false);
     const [autoCycle, setAutoCycle] = useState(1);
     const [autoStatus, setAutoStatus] = useState('');
@@ -167,19 +213,92 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
     const [lastCycleMs, setLastCycleMs] = useState<number | null>(null);
     const [sessionElapsedMs, setSessionElapsedMs] = useState(0);
     const [rootElapsedMap, setRootElapsedMap] = useState<Record<string, number>>({});
+    const prevSessionIdRef = useRef<string | null>(null);
 
     const resolveRootId = (id: string) => {
         if (!sessionRoots) return id;
         return sessionRoots[id] || id;
     };
 
+    const persistSessionState = (id: string | null) => {
+        if (!id) return;
+        const all = loadAllSessionStates();
+        all[id] = {
+            docBasePath,
+            docFiles: docFiles.map(({ path, name, size, relativePath }) => ({
+                path,
+                name,
+                size,
+                relativePath,
+            })),
+            autoConfig,
+            autoPromptLogs,
+            cycleLogs,
+            lastCycleMs,
+            sessionElapsedMs,
+            rootElapsedMap,
+            autoStatus,
+            autoCycle,
+            pendingPrefill,
+        };
+        persistAllSessionStates(all);
+    };
+
+    const restoreSessionState = (id: string) => {
+        const all = loadAllSessionStates();
+        const state = all[id];
+        if (!state) return false;
+
+        setDocBasePath(state.docBasePath || '');
+        setDocFiles(
+            (state.docFiles || []).map((f) => ({
+                ...f,
+                content: '',
+            }))
+        );
+        setAutoConfig(state.autoConfig || defaultAutomationConfig());
+        setAutoPromptLogs(state.autoPromptLogs || []);
+        setCycleLogs(state.cycleLogs || {});
+        setLastCycleMs(state.lastCycleMs ?? null);
+        setSessionElapsedMs(state.sessionElapsedMs || 0);
+        setRootElapsedMap(state.rootElapsedMap || {});
+        setAutoStatus(state.autoStatus || '');
+        setAutoCycle(state.autoCycle || 1);
+        setPendingPrefill(state.pendingPrefill);
+        return true;
+    };
+
     useEffect(() => {
+        // 先保存上一个会话的前端状态
+        persistSessionState(prevSessionIdRef.current);
+
+        // 切换会话时禁用自动运行并清理运行时状态
         setStreamingContent('');
         setError(null);
+        setIsLoading(false);
+        setIsMessagesLoading(true);
         setAutoTargetSessionId(null);
-        setAutoPromptLogs([]);
-        setCycleLogs({});
+        setAutoRunning(false);
+        setAutomationQueue(null);
+        setAutoAbort(false);
+
+        const restored = restoreSessionState(sessionId);
+        if (!restored) {
+            setDocBasePath('');
+            setDocFiles([]);
+            setAutoConfig(defaultAutomationConfig());
+            setAutoPromptLogs([]);
+            setCycleLogs({});
+            setLastCycleMs(null);
+            setSessionElapsedMs(0);
+            setRootElapsedMap({});
+            setAutoStatus('');
+            setAutoCycle(1);
+            setPendingPrefill(undefined);
+        }
+
         loadMessages();
+        prevSessionIdRef.current = sessionId;
     }, [sessionId]);
 
     useEffect(() => {
