@@ -61,10 +61,11 @@ function App() {
   ) => {
     if (!currentMode) return list[0];
     if (currentMode === 'doc-dev') {
-      return list.find((s) => map[s.id] === 'doc-dev') || null;
+      // 优先选择明确标记为 doc-dev 的会话，其次选择未标记的旧会话
+      return list.find((s) => map[s.id] === 'doc-dev') || list.find((s) => map[s.id] === undefined) || null;
     }
-    // 聊天模式：未标记或标记为 general
-    return list.find((s) => map[s.id] !== 'doc-dev') || null;
+    // 通用模式：优先选择明确标记为 general 的会话，其次选择未标记的旧会话
+    return list.find((s) => map[s.id] === 'general') || list.find((s) => map[s.id] === undefined) || null;
   };
 
   const filteredSessions = useMemo(() => {
