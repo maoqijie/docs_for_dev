@@ -190,6 +190,24 @@ pub async fn get_template_path(
         .ok_or_else(|| "模板路径包含非 UTF-8 字符".to_string())
 }
 
+#[tauri::command]
+pub async fn pick_workdir(window: Window) -> Result<Option<String>, String> {
+    let dialog = window.app_handle().dialog();
+    let result = dialog
+        .file()
+        .set_title("选择工作目录")
+        .blocking_pick_folder();
+
+    if let Some(folder) = result {
+        match folder.into_path() {
+            Ok(p) => Ok(Some(p.to_string_lossy().to_string())),
+            Err(e) => Err(format!("解析工作目录失败: {}", e)),
+        }
+    } else {
+        Ok(None)
+    }
+}
+
 #[derive(Serialize)]
 pub struct PickedDocument {
     path: String,

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { type Message, type Session, getMessages, sendMessage, pickDocuments } from '../lib/api';
+import { type Message, type Session, getMessages, sendMessage, pickDocuments, pickWorkdir } from '../lib/api';
 import { MessageList } from './MessageList';
 import { InputBox } from './InputBox';
 import { motion } from 'framer-motion';
@@ -854,6 +854,17 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                                             placeholder="工作目录（如 ./ 或 docs/ ）"
                                             className="flex-1"
                                         />
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="rounded-full whitespace-nowrap"
+                                            onClick={async () => {
+                                                const picked = await pickWorkdir();
+                                                if (picked) setDocBasePath(picked);
+                                            }}
+                                        >
+                                            选择目录
+                                        </Button>
                                         <Button variant="ghost" size="sm" onClick={() => setDocBasePath('')}>
                                             清空目录
                                         </Button>

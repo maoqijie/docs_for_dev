@@ -133,3 +133,16 @@ export async function pickDocuments(recursive: boolean = true): Promise<PickedDo
         return [];
     }
 }
+
+/**
+ * 选择工作目录，返回绝对路径
+ */
+export async function pickWorkdir(): Promise<string | null> {
+    try {
+        const result = await invoke<string | null>('pick_workdir');
+        return result ?? null;
+    } catch (error) {
+        console.error('pick_workdir 调用失败', error);
+        return null;
+    }
+}
