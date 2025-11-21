@@ -148,6 +148,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
     const [pendingPrefill, setPendingPrefill] = useState<string | undefined>(undefined);
     const [autoLogs, setAutoLogs] = useState<string[]>([]);
     const [autoTargetSessionId, setAutoTargetSessionId] = useState<string | null>(null);
+    const [autoAbort, setAutoAbort] = useState(false);
 
     const resolveRootId = (id: string) => {
         if (!sessionRoots) return id;
@@ -308,6 +309,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
 
     const startAutomation = async (cycle = 1) => {
         const config = autoConfig;
+        setAutoAbort(false);
         // 若要求每轮新会话，先创建后切换再排队执行
         if (config.newSessionEachLoop || config.autoRestartSession) {
             if (onCreateSession) {
@@ -328,6 +330,15 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         // 否则直接在当前会话执行
         setAutoTargetSessionId(sessionId);
         setAutomationQueue({ targetSessionId: sessionId, cycle, config });
+    };
+
+    const handleStopAutomation = () => {
+        setAutoAbort(true);
+        setAutomationQueue(null);
+        setAutoRunning(false);
+        setAutoTargetSessionId(null);
+        setAutoStatus('已手动停止，后续不再发送请求');
+        appendLog('任务已手动停止，后续不再发送请求。');
     };
 
     const handleAutomationSuccess = (config: AutomationConfig, cycle: number) => {
@@ -363,6 +374,11 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
     const runAutomationCycle = async (cycle = 1, configOverride?: AutomationConfig) => {
         if (!sessionId || isLoading) return;
         const config = configOverride || autoConfig;
+        if (autoAbort) {
+            setAutoRunning(false);
+            setAutoStatus('已停止');
+            return;
+        }
         setAutoRunning(true);
         setAutoCycle(cycle);
         setAutoStatus(`第 ${cycle} 轮：发送主查询…`);
@@ -374,6 +390,12 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
             if (firstReply?.content) {
                 appendLog(`第 ${cycle} 轮主查询回复：${firstReply.content}`);
             }
+            if (autoAbort) {
+                setAutoRunning(false);
+                setAutoStatus('已停止');
+                appendLog(`第 ${cycle} 轮：手动停止，已终止后续请求。`);
+                return;
+            }
             if (matchesCompletion(firstReply, config.completionSignal)) {
                 handleAutomationSuccess(config, cycle);
                 return;
@@ -384,6 +406,12 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                 const followReply = await sendContent(buildPromptWithDocs(config.nextStep, true, config), target, true);
                 if (followReply?.content) {
                     appendLog(`第 ${cycle} 轮补充查询回复：${followReply.content}`);
+                }
+                if (autoAbort) {
+                    setAutoRunning(false);
+                    setAutoStatus('已停止');
+                    appendLog(`第 ${cycle} 轮：手动停止，已终止后续请求。`);
+                    return;
                 }
                 if (matchesCompletion(followReply, config.completionSignal)) {
                     handleAutomationSuccess(config, cycle);
@@ -652,11 +680,11 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                                             </div>
                                         </div>
                                         <div className="space-y-2">
-                                            <label className="text-sm font-medium">完成提醒文案</label>
-                                            <Input
-                                                value={autoConfig.notifyText}
-                                                onChange={(e) =>
-                                                    setAutoConfig((prev) => ({ ...prev, notifyText: e.target.value }))
+                                        <label className="text-sm font-medium">完成提醒文案</label>
+                                        <Input
+                                            value={autoConfig.notifyText}
+                                            onChange={(e) =>
+                                                setAutoConfig((prev) => ({ ...prev, notifyText: e.target.value }))
                                                 }
                                                 placeholder="完成后系统通知内容"
                                             />
@@ -670,20 +698,29 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                                                 : '未完成时停止自动循环'}
                                             </div>
                                             <Button
-                                                variant="outline"
-                                                size="sm"
+                                            variant="outline"
+                                            size="sm"
                                             className={cn('rounded-full border', autoConfig.autoRestartSession && 'border-primary text-primary')}
-                                                onClick={() =>
-                                                    setAutoConfig((prev) => ({
-                                                        ...prev,
-                                                        autoRestartSession: !prev.autoRestartSession,
-                                                        newSessionEachLoop: true,
-                                                    }))
-                                                }
-                                            >
+                                            onClick={() =>
+                                                setAutoConfig((prev) => ({
+                                                    ...prev,
+                                                    autoRestartSession: !prev.autoRestartSession,
+                                                    newSessionEachLoop: true,
+                                                }))
+                                            }
+                                        >
                                             {autoConfig.autoRestartSession ? '关闭自动新会话' : '开启自动新会话'}
-                                            </Button>
-                                        </div>
+                                        </Button>
+                                        <Button
+                                            variant="destructive"
+                                            size="sm"
+                                            className="rounded-full"
+                                            onClick={handleStopAutomation}
+                                            disabled={!autoRunning && !automationQueue}
+                                        >
+                                            立即停止
+                                        </Button>
+                                    </div>
                                     <div className="rounded-xl bg-background/70 border px-3 py-2 text-sm flex items-center gap-2">
                                         {autoStatus ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : <AlertTriangle className="h-4 w-4 text-muted-foreground" />}
                                         <span className="text-muted-foreground">{autoStatus || '尚未开始自动循环，调整配置后点击自动执行。'}</span>
