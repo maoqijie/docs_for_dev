@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::path::{Path, PathBuf};
 
-use tauri::{Emitter, State, Window};
+use tauri::{Emitter, State, Window, Manager};
+use tauri_plugin_dialog::DialogExt;
 use serde::Serialize;
 
 use crate::{
@@ -260,30 +261,41 @@ fn is_allowed_ext(path: &Path) -> bool {
 }
 
 #[tauri::command]
-pub async fn pick_documents(recursive: Option<bool>) -> Result<Vec<PickedDocument>, String> {
+pub async fn pick_documents(window: Window, recursive: Option<bool>) -> Result<Vec<PickedDocument>, String> {
     let recursive = recursive.unwrap_or(true);
 
-    // 先尝试选择文件
-    let file_selection = tauri::api::dialog::blocking::FileDialogBuilder::new()
-        .set_title("选择文档")
-        .pick_files();
+    let dialog = window.app_handle().dialog();
 
     let mut paths: Vec<PathBuf> = Vec::new();
     let mut root_hint: Option<PathBuf> = None;
 
-    if let Some(files) = file_selection {
-        if !files.is_empty() {
-            root_hint = files[0].parent().map(|p| p.to_path_buf());
-            paths = files;
+    // 优先选择文件（可多选）
+    if let Some(files) = dialog
+        .file()
+        .set_title("选择文档")
+        .blocking_pick_files()
+    {
+        let mut converted = Vec::new();
+        for f in files {
+            if let Ok(p) = f.into_path() {
+                root_hint = root_hint.or_else(|| p.parent().map(|pp| pp.to_path_buf()));
+                converted.push(p);
+            }
         }
-    } else {
-        // 再尝试选择文件夹
-        if let Some(folder) = tauri::api::dialog::blocking::FileDialogBuilder::new()
+        paths = converted;
+    }
+
+    // 如果没有选文件，则尝试选择文件夹
+    if paths.is_empty() {
+        if let Some(folder) = dialog
+            .file()
             .set_title("选择文档文件夹")
-            .pick_folder()
+            .blocking_pick_folder()
         {
-            root_hint = Some(folder.clone());
-            paths = collect_files(&folder, recursive);
+            if let Ok(folder_path) = folder.into_path() {
+                root_hint = Some(folder_path.clone());
+                paths = collect_files(&folder_path, recursive);
+            }
         }
     }
 

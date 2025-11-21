@@ -466,41 +466,30 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         await sendContent(content);
     };
 
+    // 浏览器 file input 仅作兜底；无法拿到绝对路径，只保留文件名和相对路径
     const handleDocFiles = async (files: FileList | null) => {
         if (!files || files.length === 0) return;
         setIsPickingDocs(true);
-        const tasks = Array.from(files).map(
-            (file) =>
-                new Promise<DocFile | null>((resolve) => {
-                    const reader = new FileReader();
-                    reader.onload = () =>
-                        resolve({
-                            path: file.name,
-                            name: file.name,
-                            size: file.size,
-                            content: typeof reader.result === 'string' ? reader.result : '',
-                            relativePath: file.webkitRelativePath || file.name,
-                        });
-                    reader.onerror = () => resolve(null);
-                    reader.readAsText(file);
-                })
-        );
-
-        const loaded = (await Promise.all(tasks)).filter(Boolean) as DocFile[];
-        if (loaded.length) {
-            setDocFiles((prev) => {
-                const merged = [...prev];
-                loaded.forEach((doc) => {
-                    const idx = merged.findIndex((item) => item.path === doc.path);
-                    if (idx >= 0) {
-                        merged[idx] = doc;
-                    } else {
-                        merged.push(doc);
-                    }
-                });
-                return merged;
+        const loaded: DocFile[] = Array.from(files).map((file) => ({
+            path: file.name,
+            name: file.name,
+            size: file.size,
+            content: '',
+            relativePath: file.webkitRelativePath || file.name,
+            absPath: file.webkitRelativePath || file.name,
+        }));
+        setDocFiles((prev) => {
+            const merged = [...prev];
+            loaded.forEach((doc) => {
+                const idx = merged.findIndex((item) => item.path === doc.path);
+                if (idx >= 0) {
+                    merged[idx] = doc;
+                } else {
+                    merged.push(doc);
+                }
             });
-        }
+            return merged;
+        });
         setIsPickingDocs(false);
     };
 
@@ -539,7 +528,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                     const key = doc.path || doc.relative_path || doc.name;
                     const existingIdx = merged.findIndex((item) => item.absPath === doc.path || item.path === key);
                     const next: DocFile = {
-                        path: doc.relative_path || key,
+                        path: doc.path,
                         relativePath: doc.relative_path || key,
                         name: doc.name,
                         size: doc.size,
@@ -562,7 +551,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
     };
 
     const handlePickDocs = () => {
-        docInputRef.current?.click();
+        handlePickDocsNative();
     };
 
     const buildPromptWithDocs = (
@@ -810,37 +799,28 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                         <div className="grid md:grid-cols-[2fr_1.15fr] gap-4">
                             <div className="space-y-3">
                                 <div className="rounded-2xl border bg-muted/30 p-3 space-y-3">
-                                <div className="flex items-center justify-between gap-2">
-                                    <div className="flex items-center gap-2 text-sm font-medium">
-                                        <FilePlus2 className="h-4 w-4" />
-                                        选择参考文档（可多选，自动插入提示）
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={handlePickDocsNative}
-                                            disabled={isPickingDocs}
-                                            className="rounded-full"
-                                        >
-                                            绝对路径选择
-                                        </Button>
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={handlePickDocs}
-                                            disabled={isPickingDocs}
-                                                className="rounded-full"
-                                            >
-                                                {isPickingDocs ? (
-                                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                                ) : (
-                                                    <>
-                                                        <Sparkles className="h-4 w-4 mr-1" />
-                                                        选择文档
-                                                    </>
-                                                )}
-                                            </Button>
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="flex items-center gap-2 text-sm font-medium">
+                                                <FilePlus2 className="h-4 w-4" />
+                                                选择参考文档（可多选，自动插入提示）
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={handlePickDocs}
+                                                    disabled={isPickingDocs}
+                                                    className="rounded-full"
+                                                >
+                                                    {isPickingDocs ? (
+                                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                                    ) : (
+                                                        <>
+                                                            <Sparkles className="h-4 w-4 mr-1" />
+                                                            选择文档
+                                                        </>
+                                                    )}
+                                                </Button>
                                             {docFiles.length > 0 && (
                                                 <Button
                                                     variant="ghost"

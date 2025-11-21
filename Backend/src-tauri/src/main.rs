@@ -37,6 +37,7 @@ fn main() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(db_manager)
         .manage(codex_client)
         .manage(template_manager)
