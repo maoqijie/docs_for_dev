@@ -154,6 +154,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
     const [autoLogs, setAutoLogs] = useState<string[]>([]);
     const [autoTargetSessionId, setAutoTargetSessionId] = useState<string | null>(null);
     const [autoAbort, setAutoAbort] = useState(false);
+    const [autoPromptLogs, setAutoPromptLogs] = useState<string[]>([]);
 
     const resolveRootId = (id: string) => {
         if (!sessionRoots) return id;
@@ -165,6 +166,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         setError(null);
         setAutoLogs([]);
         setAutoTargetSessionId(null);
+        setAutoPromptLogs([]);
         loadMessages();
     }, [sessionId]);
 
@@ -251,6 +253,12 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         setAutoLogs((prev) => [entry, ...prev].slice(0, 50));
     };
 
+    const appendPromptLog = (text: string) => {
+        const entry = text.trim();
+        if (!entry) return;
+        setAutoPromptLogs((prev) => [entry, ...prev].slice(0, 20));
+    };
+
     const handleSend = async (content: string) => {
         await sendContent(content);
     };
@@ -303,13 +311,19 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         customConfig: AutomationConfig = autoConfig,
     ) => {
         const docBlock = buildDocBlock(docFiles, docBasePath);
-        let prompt = template.includes('{documents}')
+        const workdir = docBasePath?.trim() || './';
+        const workdirHint = `工作目录: ${workdir}\n当你需要修改/创建文件时，请在此目录下使用文档给出的相对路径进行操作，直接输出需要的编辑步骤或命令，不要只给检查结论。`;
+
+        let promptBody = template.includes('{documents}')
             ? template.replace('{documents}', docBlock || '（未选择文档，请先选择）')
             : `${template}${docBlock ? `\n\n${docBlock}` : ''}`;
 
         if (includeCompletionHint && customConfig.completionSignal.trim()) {
-            prompt = `${prompt}\n\n完成后请输出精确标记：${customConfig.completionSignal.trim()}，否则视为未完成。`;
+            promptBody = `${promptBody}\n\n完成后请输出精确标记：${customConfig.completionSignal.trim()}，否则视为未完成。`;
         }
+
+        const prompt = `${workdirHint}\n\n${promptBody}`;
+        appendPromptLog(prompt);
         return prompt;
     };
 
@@ -782,33 +796,56 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
 
             {mode === 'doc-dev' && (
                 <div className="max-w-5xl mx-auto w-full px-4 mb-4">
-                    <div className="rounded-2xl border bg-muted/30 p-3 space-y-2">
+                    <div className="rounded-2xl border bg-muted/30 p-3 space-y-3">
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2 text-sm font-medium">
-                                <Loader2 className="h-4 w-4 text-primary animate-spin" />
                                 自动执行结果记录
                             </div>
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 px-2 rounded-full"
-                                onClick={() => setAutoLogs([])}
-                                disabled={autoLogs.length === 0}
-                            >
-                                清空
-                            </Button>
-                        </div>
-                        {autoLogs.length === 0 ? (
-                            <p className="text-xs text-muted-foreground">还没有执行记录，点击“自动执行”后会在此累计展示每一轮的返回内容。</p>
-                        ) : (
-                            <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
-                                {autoLogs.map((log, idx) => (
-                                    <div key={idx} className="text-xs text-foreground bg-background/80 border rounded-xl px-3 py-2 leading-relaxed">
-                                        {log}
-                                    </div>
-                                ))}
+                            <div className="flex gap-2">
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 px-2 rounded-full"
+                                    onClick={() => {
+                                        setAutoLogs([]);
+                                        setAutoPromptLogs([]);
+                                    }}
+                                    disabled={autoLogs.length === 0 && autoPromptLogs.length === 0}
+                                >
+                                    清空
+                                </Button>
                             </div>
-                        )}
+                        </div>
+                        <div className="grid md:grid-cols-2 gap-3">
+                            <div className="space-y-2">
+                                <div className="text-xs font-semibold text-muted-foreground">前端构造提示</div>
+                                {autoPromptLogs.length === 0 ? (
+                                    <p className="text-xs text-muted-foreground">暂无提示记录</p>
+                                ) : (
+                                    <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
+                                        {autoPromptLogs.map((log, idx) => (
+                                            <div key={idx} className="text-xs text-foreground bg-background/80 border rounded-xl px-3 py-2 leading-relaxed whitespace-pre-wrap">
+                                                {log}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                            <div className="space-y-2">
+                                <div className="text-xs font-semibold text-muted-foreground">Codex 返回</div>
+                                {autoLogs.length === 0 ? (
+                                    <p className="text-xs text-muted-foreground">还没有执行记录，点击“自动执行”后会在此累计展示每一轮的返回内容。</p>
+                                ) : (
+                                    <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
+                                        {autoLogs.map((log, idx) => (
+                                            <div key={idx} className="text-xs text-foreground bg-background/80 border rounded-xl px-3 py-2 leading-relaxed">
+                                                {log}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}
