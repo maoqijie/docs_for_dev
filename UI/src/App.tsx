@@ -71,32 +71,33 @@ function App() {
   const filteredSessions = useMemo(() => {
     if (!mode) return sessions;
 
-    // 第一层过滤：按模式过滤
+    // 第一层：按模式过滤
     const modeFiltered = sessions.filter((s) => {
       const m = sessionModes[s.id];
       if (mode === 'doc-dev') {
-        // 显示明确标记为 doc-dev 的会话，以及没有标记的旧会话
         return m === 'doc-dev' || m === undefined;
       }
-      // 通用模式：显示非 doc-dev 的会话（包括 undefined 和 general）
       return m !== 'doc-dev';
     });
 
-    console.log('🔍 [DEBUG] 第一层过滤（按模式）后剩余:', modeFiltered.length, '个会话');
-    console.log('🔍 [DEBUG] 通过模式过滤的会话:', modeFiltered.map(s => ({ id: s.id, title: s.title, mode: sessionModes[s.id] })));
+    console.log('🔍 [DEBUG] 第一层过滤（模式）后:', modeFiltered.length, '个会话');
 
-    // 第二层过滤：只显示根会话
+    // 第二层：只显示根会话（隐藏自动创建的子会话）
     const rootFiltered = modeFiltered.filter((s) => {
-      const root = sessionRoots[s.id] || s.id;
-      const isRoot = root === s.id;
+      const root = sessionRoots[s.id];
+      // 如果没有 root 记录，说明是旧会话，当作根会话
+      // 如果 root === s.id，说明是根会话
+      const isRoot = !root || root === s.id;
+
       if (!isRoot) {
-        console.log('🔍 [DEBUG] 过滤掉非根会话:', s.id, s.title, '其根为:', root);
+        console.log('🔍 [DEBUG] 隐藏子会话:', s.title, '(id:', s.id, ', root:', root, ')');
       }
+
       return isRoot;
     });
 
-    console.log('🔍 [DEBUG] 第二层过滤（根会话）后剩余:', rootFiltered.length, '个会话');
-    console.log('🔍 [DEBUG] 最终显示的会话:', rootFiltered.map(s => ({ id: s.id, title: s.title })));
+    console.log('🔍 [DEBUG] 第二层过滤（根会话）后:', rootFiltered.length, '个会话');
+    console.log('🔍 [DEBUG] 最终显示:', rootFiltered.map(s => ({ title: s.title, id: s.id.substring(0, 8) })));
 
     return rootFiltered;
   }, [sessions, sessionModes, sessionRoots, mode]);
