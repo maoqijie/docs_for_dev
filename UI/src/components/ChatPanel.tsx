@@ -44,6 +44,7 @@ type DocFile = {
     name: string;
     size: number;
     content: string;
+    relativePath: string;
 };
 
 type AutomationConfig = {
@@ -87,12 +88,13 @@ const formatBytes = (bytes: number) => {
     return `${value.toFixed(value >= 10 ? 0 : 1)}${units[idx]}`;
 };
 
-const buildDocBlock = (docs: DocFile[]) => {
+const buildDocBlock = (docs: DocFile[], baseDir: string) => {
     if (!docs.length) return '';
+    const dir = baseDir?.trim() || '.';
     return docs
         .map(
             (doc, index) =>
-                `【文档${index + 1}: ${doc.name}】\n路径: ${doc.path}\n大小: ${formatBytes(doc.size)}\n内容:\n${doc.content.trim()}`
+                `【文档${index + 1}: ${doc.name}】\n工作目录: ${dir}\n相对路径: ${doc.relativePath || doc.path}\n大小: ${formatBytes(doc.size)}\n内容:\n${doc.content.trim()}`
         )
         .join('\n\n');
 };
@@ -127,6 +129,9 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
     const [error, setError] = useState<string | null>(null);
 
     const [docFiles, setDocFiles] = useState<DocFile[]>([]);
+    const [docBasePath, setDocBasePath] = useState(() => {
+        return localStorage.getItem('codex-doc-base') || '';
+    });
     const [isPickingDocs, setIsPickingDocs] = useState(false);
     const docInputRef = useRef<HTMLInputElement>(null);
     const [autoConfig, setAutoConfig] = useState<AutomationConfig>({
@@ -162,6 +167,10 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         setAutoTargetSessionId(null);
         loadMessages();
     }, [sessionId]);
+
+    useEffect(() => {
+        localStorage.setItem('codex-doc-base', docBasePath);
+    }, [docBasePath]);
 
     useEffect(() => {
         if (automationQueue) {
@@ -259,6 +268,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                             name: file.name,
                             size: file.size,
                             content: typeof reader.result === 'string' ? reader.result : '',
+                            relativePath: file.webkitRelativePath || file.name,
                         });
                     reader.onerror = () => resolve(null);
                     reader.readAsText(file);
@@ -292,7 +302,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         includeCompletionHint = true,
         customConfig: AutomationConfig = autoConfig,
     ) => {
-        const docBlock = buildDocBlock(docFiles);
+        const docBlock = buildDocBlock(docFiles, docBasePath);
         let prompt = template.includes('{documents}')
             ? template.replace('{documents}', docBlock || '（未选择文档，请先选择）')
             : `${template}${docBlock ? `\n\n${docBlock}` : ''}`;
@@ -338,6 +348,9 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         setAutoRunning(false);
         setAutoTargetSessionId(null);
         setAutoStatus('已手动停止，后续不再发送请求');
+        setIsLoading(false);
+        setIsMessagesLoading(false);
+        setStreamingContent('');
         appendLog('任务已手动停止，后续不再发送请求。');
     };
 
@@ -438,7 +451,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="flex flex-col h-full relative"
+            className="flex flex-col h-full relative overflow-y-auto"
         >
             <div className="w-full px-4 pt-3">
                 <div className="flex flex-wrap gap-2 items-center">
@@ -512,12 +525,12 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
 
                         <div className="grid md:grid-cols-[2fr_1.15fr] gap-4">
                             <div className="space-y-3">
-                                <div className="rounded-2xl border bg-muted/30 p-3">
-                                        <div className="flex items-center justify-between gap-2">
-                                            <div className="flex items-center gap-2 text-sm font-medium">
-                                                <FilePlus2 className="h-4 w-4" />
-                                                选择参考文档（可多选，自动插入提示）
-                                            </div>
+                                <div className="rounded-2xl border bg-muted/30 p-3 space-y-3">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2 text-sm font-medium">
+                                            <FilePlus2 className="h-4 w-4" />
+                                            选择参考文档（可多选，自动插入提示）
+                                        </div>
                                         <div className="flex gap-2">
                                             <Button
                                                 variant="ghost"
@@ -552,12 +565,26 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                                         type="file"
                                         multiple
                                         accept=".md,.txt,.json,.log,.markdown,.mdx"
+                                        // @ts-ignore 允许选择目录
+                                        webkitdirectory="true"
                                         className="hidden"
                                         onChange={(e) => {
                                             handleDocFiles(e.target.files);
                                             if (e.target) e.target.value = '';
                                         }}
                                     />
+                                    <div className="flex gap-2 items-center">
+                                        <Input
+                                            value={docBasePath}
+                                            onChange={(e) => setDocBasePath(e.target.value)}
+                                            placeholder="工作目录（如 ./ 或 docs/ ）"
+                                            className="flex-1"
+                                        />
+                                        <Button variant="ghost" size="sm" onClick={() => setDocBasePath('')}>
+                                            清空目录
+                                        </Button>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">发送时会附上工作目录与文件相对路径，便于模型按正确路径引用。</p>
                                     <div className="flex flex-wrap gap-2 mt-3">
                                         {docFiles.length === 0 && (
                                             <span className="text-xs text-muted-foreground">尚未选择文档</span>
@@ -567,9 +594,14 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                                                 key={doc.path}
                                                 className="group flex items-center gap-2 px-3 py-2 rounded-xl border bg-background/80 shadow-sm"
                                             >
-                                                <span className="text-xs font-medium truncate max-w-[140px]">
-                                                    {doc.name}
-                                                </span>
+                                                <div className="flex flex-col min-w-0">
+                                                    <span className="text-xs font-medium truncate max-w-[180px]">
+                                                        {doc.name}
+                                                    </span>
+                                                    <span className="text-[10px] text-muted-foreground truncate max-w-[180px]">
+                                                        {doc.relativePath || doc.path}
+                                                    </span>
+                                                </div>
                                                 <span className="text-[10px] text-muted-foreground">{formatBytes(doc.size)}</span>
                                                 <Button
                                                     variant="ghost"
