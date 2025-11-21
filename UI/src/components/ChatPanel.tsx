@@ -573,12 +573,13 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onSess
                                     <div className="grid grid-cols-2 gap-3">
                                         <div className="space-y-2">
                                             <label className="text-sm font-medium">最大循环次数</label>
-                                            <div className="flex gap-2">
+                                            <div className="flex gap-2 items-center">
                                                 <Input
                                                     type="number"
                                                     min={1}
                                                     value={autoConfig.maxCycles}
                                                     disabled={autoConfig.infiniteLoop}
+                                                    className="flex-1 min-w-[110px]"
                                                     onChange={(e) =>
                                                         setAutoConfig((prev) => ({
                                                             ...prev,

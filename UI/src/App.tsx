@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { type Session, getSessions, createSession, deleteSession } from './lib/api';
+import { type Session, getSessions, createSession, deleteSession, updateSessionTitle } from './lib/api';
 import { ChatPanel } from './components/ChatPanel';
 import { Sidebar } from './components/Sidebar';
 import { ThemeProvider } from './components/ThemeProvider';
@@ -71,6 +71,16 @@ function App() {
     }
   };
 
+  const handleRenameSession = async (sessionId: string, title: string) => {
+    const nextTitle = title.trim() || (mode === 'doc-dev' ? '未命名任务' : '未命名对话');
+    try {
+      await updateSessionTitle(sessionId, nextTitle);
+      setSessions((prev) => prev.map((s) => (s.id === sessionId ? { ...s, title: nextTitle } : s)));
+    } catch (error) {
+      console.error('重命名会话失败:', error);
+    }
+  };
+
   return (
     <ThemeProvider defaultTheme="dark" storageKey="codex-theme">
       <div className="flex h-screen bg-background">
@@ -124,6 +134,7 @@ function App() {
               onSessionSelect={setCurrentSessionId}
               onNewSession={handleNewSession}
               onDeleteSession={handleDeleteSession}
+              onRenameSession={handleRenameSession}
               mode={mode || 'doc-dev'}
             />
             <div className="flex-1 flex flex-col relative overflow-hidden">
