@@ -230,11 +230,12 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         const all = loadAllSessionStates();
         all[id] = {
             docBasePath,
-            docFiles: docFiles.map(({ path, name, size, relativePath }) => ({
+            docFiles: docFiles.map(({ path, name, size, relativePath, absPath }) => ({
                 path,
                 name,
                 size,
                 relativePath,
+                absPath,
             })),
             autoConfig,
             autoPromptLogs,
