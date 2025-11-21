@@ -1,8 +1,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::sync::Arc;
+use std::sync::Mutex;
 
-use codex_chat_lib::{api::CodexClient, commands, db::DbManager};
+use codex_chat_lib::{api::CodexClient, commands, db::DbManager, prompt_templates::PromptTemplateManager};
 
 fn main() {
     let data_dir = dirs::data_dir()
@@ -28,10 +29,17 @@ fn main() {
         model,
     ));
 
+    // 初始化提示词模板管理器
+    let templates_dir = data_dir.join("prompts");
+    let template_manager = Arc::new(Mutex::new(
+        PromptTemplateManager::new(templates_dir).expect("模板管理器初始化失败")
+    ));
+
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .manage(db_manager)
         .manage(codex_client)
+        .manage(template_manager)
         .invoke_handler(tauri::generate_handler![
             commands::create_session,
             commands::get_sessions,
@@ -39,6 +47,13 @@ fn main() {
             commands::send_message,
             commands::delete_session,
             commands::update_session_title,
+            commands::list_templates,
+            commands::get_template,
+            commands::render_template,
+            commands::update_template,
+            commands::create_template,
+            commands::delete_template,
+            commands::get_template_path,
         ])
         .run(tauri::generate_context!())
         .expect("启动 Tauri 应用失败");

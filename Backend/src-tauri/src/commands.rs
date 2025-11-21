@@ -1,10 +1,13 @@
 use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::Mutex;
 
 use tauri::{Emitter, State, Window};
 
 use crate::{
     api::{ChatMessage, CodexClient},
     db::{DbManager, Message, Session},
+    prompt_templates::{PromptTemplate, PromptTemplateManager},
 };
 
 #[tauri::command]
@@ -105,4 +108,81 @@ pub async fn update_session_title(
 ) -> Result<(), String> {
     db.update_session_title(&session_id, &title)
         .map_err(|e| format!("更新会话标题失败: {}", e))
+}
+
+// 模板管理命令
+
+#[tauri::command]
+pub async fn list_templates(
+    template_manager: State<'_, Arc<Mutex<PromptTemplateManager>>>,
+) -> Result<Vec<PromptTemplate>, String> {
+    let manager = template_manager.lock().map_err(|e| format!("锁定模板管理器失败: {}", e))?;
+    Ok(manager.list_templates())
+}
+
+#[tauri::command]
+pub async fn get_template(
+    template_manager: State<'_, Arc<Mutex<PromptTemplateManager>>>,
+    name: String,
+) -> Result<PromptTemplate, String> {
+    let manager = template_manager.lock().map_err(|e| format!("锁定模板管理器失败: {}", e))?;
+    manager.get_template(&name)
+        .cloned()
+        .ok_or_else(|| format!("模板不存在: {}", name))
+}
+
+#[tauri::command]
+pub async fn render_template(
+    template_manager: State<'_, Arc<Mutex<PromptTemplateManager>>>,
+    name: String,
+    variables: HashMap<String, String>,
+) -> Result<String, String> {
+    let manager = template_manager.lock().map_err(|e| format!("锁定模板管理器失败: {}", e))?;
+    manager.render(&name, &variables)
+        .map_err(|e| format!("渲染模板失败: {}", e))
+}
+
+#[tauri::command]
+pub async fn update_template(
+    template_manager: State<'_, Arc<Mutex<PromptTemplateManager>>>,
+    name: String,
+    content: String,
+) -> Result<(), String> {
+    let mut manager = template_manager.lock().map_err(|e| format!("锁定模板管理器失败: {}", e))?;
+    manager.update_template(&name, content)
+        .map_err(|e| format!("更新模板失败: {}", e))
+}
+
+#[tauri::command]
+pub async fn create_template(
+    template_manager: State<'_, Arc<Mutex<PromptTemplateManager>>>,
+    name: String,
+    content: String,
+    description: String,
+) -> Result<(), String> {
+    let mut manager = template_manager.lock().map_err(|e| format!("锁定模板管理器失败: {}", e))?;
+    manager.create_template(&name, content, description)
+        .map_err(|e| format!("创建模板失败: {}", e))
+}
+
+#[tauri::command]
+pub async fn delete_template(
+    template_manager: State<'_, Arc<Mutex<PromptTemplateManager>>>,
+    name: String,
+) -> Result<(), String> {
+    let mut manager = template_manager.lock().map_err(|e| format!("锁定模板管理器失败: {}", e))?;
+    manager.delete_template(&name)
+        .map_err(|e| format!("删除模板失败: {}", e))
+}
+
+#[tauri::command]
+pub async fn get_template_path(
+    template_manager: State<'_, Arc<Mutex<PromptTemplateManager>>>,
+    name: String,
+) -> Result<String, String> {
+    let manager = template_manager.lock().map_err(|e| format!("锁定模板管理器失败: {}", e))?;
+    let path = manager.get_template_path(&name);
+    path.to_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| "模板路径包含非 UTF-8 字符".to_string())
 }
