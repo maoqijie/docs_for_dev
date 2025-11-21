@@ -70,20 +70,35 @@ function App() {
 
   const filteredSessions = useMemo(() => {
     if (!mode) return sessions;
-    return sessions
-      .filter((s) => {
-        const m = sessionModes[s.id];
-        if (mode === 'doc-dev') {
-          // 显示明确标记为 doc-dev 的会话，以及没有标记的旧会话
-          return m === 'doc-dev' || m === undefined;
-        }
-        // 通用模式：显示非 doc-dev 的会话（包括 undefined 和 general）
-        return m !== 'doc-dev';
-      })
-      .filter((s) => {
-        const root = sessionRoots[s.id] || s.id;
-        return root === s.id; // 仅展示根会话，隐藏自动创建的子会话
-      });
+
+    // 第一层过滤：按模式过滤
+    const modeFiltered = sessions.filter((s) => {
+      const m = sessionModes[s.id];
+      if (mode === 'doc-dev') {
+        // 显示明确标记为 doc-dev 的会话，以及没有标记的旧会话
+        return m === 'doc-dev' || m === undefined;
+      }
+      // 通用模式：显示非 doc-dev 的会话（包括 undefined 和 general）
+      return m !== 'doc-dev';
+    });
+
+    console.log('🔍 [DEBUG] 第一层过滤（按模式）后剩余:', modeFiltered.length, '个会话');
+    console.log('🔍 [DEBUG] 通过模式过滤的会话:', modeFiltered.map(s => ({ id: s.id, title: s.title, mode: sessionModes[s.id] })));
+
+    // 第二层过滤：只显示根会话
+    const rootFiltered = modeFiltered.filter((s) => {
+      const root = sessionRoots[s.id] || s.id;
+      const isRoot = root === s.id;
+      if (!isRoot) {
+        console.log('🔍 [DEBUG] 过滤掉非根会话:', s.id, s.title, '其根为:', root);
+      }
+      return isRoot;
+    });
+
+    console.log('🔍 [DEBUG] 第二层过滤（根会话）后剩余:', rootFiltered.length, '个会话');
+    console.log('🔍 [DEBUG] 最终显示的会话:', rootFiltered.map(s => ({ id: s.id, title: s.title })));
+
+    return rootFiltered;
   }, [sessions, sessionModes, sessionRoots, mode]);
 
   useEffect(() => {
@@ -93,6 +108,12 @@ function App() {
   const loadSessions = async () => {
     try {
       const data = await getSessions();
+      console.log('🔍 [DEBUG] 从数据库加载的会话数量:', data.length);
+      console.log('🔍 [DEBUG] 会话列表:', data.map(s => ({ id: s.id, title: s.title })));
+      console.log('🔍 [DEBUG] 当前模式:', mode);
+      console.log('🔍 [DEBUG] sessionModes 映射:', sessionModes);
+      console.log('🔍 [DEBUG] sessionRoots 映射:', sessionRoots);
+
       setSessions(data);
       // 为缺失 root 的会话补全自身为 root
       const patchedRoots: Record<string, string> = { ...sessionRoots };
@@ -104,6 +125,7 @@ function App() {
         }
       });
       if (rootsChanged) {
+        console.log('🔍 [DEBUG] 补全后的 sessionRoots:', patchedRoots);
         persistSessionRoots(patchedRoots);
       }
       if (data.length === 0) {
