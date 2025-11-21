@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { type Session, getSessions, createSession, deleteSession, updateSessionTitle } from './lib/api';
 import { ChatPanel } from './components/ChatPanel';
 import { Sidebar } from './components/Sidebar';
@@ -10,11 +10,76 @@ import { motion } from 'framer-motion';
 function App() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [sessionModes, setSessionModes] = useState<Record<string, 'doc-dev' | 'general'>>(() => {
+    try {
+      const raw = localStorage.getItem('codex-session-mode-map');
+      return raw ? JSON.parse(raw) : {};
+    } catch (err) {
+      console.error('读取会话模式映射失败', err);
+      return {};
+    }
+  });
+  const [sessionRoots, setSessionRoots] = useState<Record<string, string>>(() => {
+    try {
+      const raw = localStorage.getItem('codex-session-root-map');
+      return raw ? JSON.parse(raw) : {};
+    } catch (err) {
+      console.error('读取会话根映射失败', err);
+      return {};
+    }
+  });
   const [mode, setMode] = useState<'doc-dev' | 'general' | null>(() => {
     const stored = localStorage.getItem('codex-mode') as 'doc-dev' | 'general' | null;
     return stored || null;
   });
   const [showModePicker, setShowModePicker] = useState(() => mode === null);
+
+  const persistSessionModes = (next: Record<string, 'doc-dev' | 'general'>) => {
+    setSessionModes(next);
+    try {
+      localStorage.setItem('codex-session-mode-map', JSON.stringify(next));
+    } catch (err) {
+      console.error('保存会话模式映射失败', err);
+    }
+  };
+
+  const persistSessionRoots = (next: Record<string, string>) => {
+    setSessionRoots(next);
+    try {
+      localStorage.setItem('codex-session-root-map', JSON.stringify(next));
+    } catch (err) {
+      console.error('保存会话根映射失败', err);
+    }
+  };
+
+  const pickFirstByMode = (
+    list: Session[],
+    map: Record<string, 'doc-dev' | 'general'>,
+    currentMode: 'doc-dev' | 'general' | null,
+  ) => {
+    if (!currentMode) return list[0];
+    if (currentMode === 'doc-dev') {
+      return list.find((s) => map[s.id] === 'doc-dev') || null;
+    }
+    // 聊天模式：未标记或标记为 general
+    return list.find((s) => map[s.id] !== 'doc-dev') || null;
+  };
+
+  const filteredSessions = useMemo(() => {
+    if (!mode) return sessions;
+    return sessions
+      .filter((s) => {
+        const m = sessionModes[s.id];
+        if (mode === 'doc-dev') {
+          return m === 'doc-dev';
+        }
+        return m !== 'doc-dev';
+      })
+      .filter((s) => {
+        const root = sessionRoots[s.id] || s.id;
+        return root === s.id; // 仅展示根会话，隐藏自动创建的子会话
+      });
+  }, [sessions, sessionModes, sessionRoots, mode]);
 
   useEffect(() => {
     loadSessions();
@@ -24,8 +89,31 @@ function App() {
     try {
       const data = await getSessions();
       setSessions(data);
-      if (data.length > 0 && !currentSessionId) {
-        setCurrentSessionId(data[0].id);
+      // 为缺失 root 的会话补全自身为 root
+      const patchedRoots: Record<string, string> = { ...sessionRoots };
+      let rootsChanged = false;
+      data.forEach((s) => {
+        if (!patchedRoots[s.id]) {
+          patchedRoots[s.id] = s.id;
+          rootsChanged = true;
+        }
+      });
+      if (rootsChanged) {
+        persistSessionRoots(patchedRoots);
+      }
+      if (data.length === 0) {
+        setCurrentSessionId(null);
+        return;
+      }
+
+      const first = pickFirstByMode(data, sessionModes, mode);
+      const existsCurrent = data.some((d) => d.id === currentSessionId);
+      const currentModeMatch = currentSessionId
+        ? sessionModes[currentSessionId] === (mode || 'general') || (!sessionModes[currentSessionId] && mode === 'general')
+        : false;
+
+      if (!existsCurrent || !currentModeMatch) {
+        setCurrentSessionId(first?.id || null);
       }
     } catch (error) {
       console.error('加载会话列表失败:', error);
@@ -38,6 +126,12 @@ function App() {
       const session = await createSession(title || defaultTitle);
       setSessions((prev) => [session, ...prev]);
       setCurrentSessionId(session.id);
+      if (mode) {
+        const next = { ...sessionModes, [session.id]: mode };
+        persistSessionModes(next);
+      }
+      const rootNext = { ...sessionRoots, [session.id]: session.id };
+      persistSessionRoots(rootNext);
       return session;
     } catch (error) {
       console.error('创建会话失败:', error);
@@ -49,6 +143,14 @@ function App() {
     setMode(value);
     localStorage.setItem('codex-mode', value);
     setShowModePicker(false);
+
+    // 切换模式时，如果当前会话不属于该模式，则切到该模式第一条
+    const first = pickFirstByMode(sessions, sessionModes, value);
+    if (first) {
+      setCurrentSessionId(first.id);
+    } else {
+      setCurrentSessionId(null);
+    }
   };
 
   const handleBackToModePicker = () => {
@@ -65,6 +167,16 @@ function App() {
         }
         return filtered;
       });
+      if (sessionModes[sessionId]) {
+        const next = { ...sessionModes };
+        delete next[sessionId];
+        persistSessionModes(next);
+      }
+      if (sessionRoots[sessionId]) {
+        const nextRoot = { ...sessionRoots };
+        delete nextRoot[sessionId];
+        persistSessionRoots(nextRoot);
+      }
       loadSessions();
     } catch (error) {
       console.error('删除会话失败:', error);
@@ -79,6 +191,11 @@ function App() {
     } catch (error) {
       console.error('重命名会话失败:', error);
     }
+  };
+
+  const handleMarkSessionRoot = (sessionId: string, rootId: string) => {
+    const next = { ...sessionRoots, [sessionId]: rootId };
+    persistSessionRoots(next);
   };
 
   return (
@@ -129,7 +246,7 @@ function App() {
         ) : (
           <>
             <Sidebar
-              sessions={sessions}
+              sessions={filteredSessions}
               currentSessionId={currentSessionId}
               onSessionSelect={setCurrentSessionId}
               onNewSession={handleNewSession}
@@ -144,7 +261,8 @@ function App() {
                   mode={mode || 'doc-dev'}
                   onModeBack={handleBackToModePicker}
                   onCreateSession={handleNewSession}
-                  onSessionSwitch={setCurrentSessionId}
+                  onMarkSessionRoot={handleMarkSessionRoot}
+                  sessionRoots={sessionRoots}
                 />
               ) : (
                 <div className="flex-1 flex items-center justify-center bg-gradient-to-b from-background to-muted/20">

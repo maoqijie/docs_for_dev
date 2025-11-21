@@ -35,7 +35,8 @@ interface ChatPanelProps {
     mode: 'doc-dev' | 'general';
     onModeBack: () => void;
     onCreateSession?: (title?: string) => Promise<Session | undefined>;
-    onSessionSwitch?: (id: string) => void;
+    onMarkSessionRoot?: (sessionId: string, rootId: string) => void;
+    sessionRoots?: Record<string, string>;
 }
 
 type DocFile = {
@@ -116,7 +117,7 @@ const notifyCompletion = (text: string) => {
     }
 };
 
-export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onSessionSwitch }: ChatPanelProps) {
+export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMarkSessionRoot, sessionRoots }: ChatPanelProps) {
     const [messages, setMessages] = useState<Message[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [isMessagesLoading, setIsMessagesLoading] = useState(true);
@@ -145,19 +146,29 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onSess
     const [autoStatus, setAutoStatus] = useState('');
     const [automationQueue, setAutomationQueue] = useState<AutomationQueue | null>(null);
     const [pendingPrefill, setPendingPrefill] = useState<string | undefined>(undefined);
+    const [autoLogs, setAutoLogs] = useState<string[]>([]);
+    const [autoTargetSessionId, setAutoTargetSessionId] = useState<string | null>(null);
+
+    const resolveRootId = (id: string) => {
+        if (!sessionRoots) return id;
+        return sessionRoots[id] || id;
+    };
 
     useEffect(() => {
         setStreamingContent('');
         setError(null);
+        setAutoLogs([]);
+        setAutoTargetSessionId(null);
         loadMessages();
     }, [sessionId]);
 
     useEffect(() => {
-        if (automationQueue && sessionId === automationQueue.targetSessionId) {
+        if (automationQueue) {
             runAutomationCycle(automationQueue.cycle, automationQueue.config);
             setAutomationQueue(null);
         }
-    }, [automationQueue, sessionId]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [automationQueue]);
 
     const loadMessages = async (): Promise<Message[]> => {
         setIsMessagesLoading(true);
@@ -174,15 +185,22 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onSess
         }
     };
 
-    const sendContent = async (content: string): Promise<Message | null> => {
+    const sendContent = async (
+        content: string,
+        targetOverride?: string,
+        skipUiInjection = false,
+    ): Promise<Message | null> => {
+        const targetSession = targetOverride || sessionId;
         const userMessage: Message = {
             id: Date.now(),
-            session_id: sessionId,
+            session_id: targetSession,
             role: 'user',
             content,
             timestamp: new Date().toISOString(),
         };
-        setMessages((prev) => [...prev, userMessage]);
+        if (!skipUiInjection && targetSession === sessionId) {
+            setMessages((prev) => [...prev, userMessage]);
+        }
         setIsLoading(true);
         setStreamingContent('');
         setError(null);
@@ -194,12 +212,17 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onSess
                     ? `【文档开发模式】请针对文档/开发相关需求输出结构化、可执行的步骤与示例。\n${content}`
                     : content;
 
-            await sendMessage(sessionId, finalContent, model, thinkingDepth, (chunk) => {
-                setStreamingContent((prev) => prev + chunk);
+            await sendMessage(targetSession, finalContent, model, thinkingDepth, (chunk) => {
+                if (!skipUiInjection && targetSession === sessionId) {
+                    setStreamingContent((prev) => prev + chunk);
+                }
             });
 
-            const updated = await loadMessages();
-            setStreamingContent('');
+            const updated = await getMessages(targetSession);
+            if (!skipUiInjection && targetSession === sessionId) {
+                setMessages(updated);
+                setStreamingContent('');
+            }
             const lastAssistant = [...updated].reverse().find((m) => m.role === 'assistant') ?? null;
             return lastAssistant;
         } catch (err) {
@@ -210,6 +233,12 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onSess
             setIsLoading(false);
             setIsMessagesLoading(false);
         }
+    };
+
+    const appendLog = (text: string) => {
+        const entry = text.trim();
+        if (!entry) return;
+        setAutoLogs((prev) => [entry, ...prev].slice(0, 50));
     };
 
     const handleSend = async (content: string) => {
@@ -281,18 +310,23 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onSess
         const config = autoConfig;
         // 若要求每轮新会话，先创建后切换再排队执行
         if (config.newSessionEachLoop || config.autoRestartSession) {
-            if (onCreateSession && onSessionSwitch) {
+            if (onCreateSession) {
                 setAutoStatus(`创建新会话用于第 ${cycle} 轮…`);
                 const newSession = await onCreateSession(`文档自动循环 ${cycle}`);
                 if (newSession) {
+                    if (onMarkSessionRoot) {
+                        const root = resolveRootId(sessionId);
+                        onMarkSessionRoot(newSession.id, root);
+                    }
+                    setAutoTargetSessionId(newSession.id);
                     setAutomationQueue({ targetSessionId: newSession.id, cycle, config });
-                    onSessionSwitch(newSession.id);
                     return;
                 }
             }
         }
 
         // 否则直接在当前会话执行
+        setAutoTargetSessionId(sessionId);
         setAutomationQueue({ targetSessionId: sessionId, cycle, config });
     };
 
@@ -300,24 +334,30 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onSess
         setAutoStatus(`检测到完成标记「${config.completionSignal}」，在第 ${cycle} 轮完成。`);
         setAutoRunning(false);
         notifyCompletion(config.notifyText || '文档开发任务已完成');
+        appendLog(`第 ${cycle} 轮：已完成，输出包含标记「${config.completionSignal}」`);
     };
 
     const handleAutomationFailure = async (config: AutomationConfig, cycle: number) => {
         const shouldContinue = config.autoRestartSession && (config.infiniteLoop || config.maxCycles > cycle);
-        if (shouldContinue && onCreateSession && onSessionSwitch) {
+        if (shouldContinue && onCreateSession) {
             const next = cycle + 1;
             const label = config.infiniteLoop ? `第 ${next} 轮` : `(${next}/${config.maxCycles})`;
             setAutoStatus(`第 ${cycle} 轮未完成，准备新建会话继续 ${label}`);
             const newSession = await onCreateSession(`文档自动循环 ${next}`);
             if (newSession) {
+                if (onMarkSessionRoot) {
+                    const root = resolveRootId(sessionId);
+                    onMarkSessionRoot(newSession.id, root);
+                }
+                setAutoTargetSessionId(newSession.id);
                 setAutomationQueue({ targetSessionId: newSession.id, cycle: next, config });
-                onSessionSwitch(newSession.id);
                 setAutoRunning(false);
                 return;
             }
         }
         setAutoStatus('未检测到完成标记，自动循环已停止');
         setAutoRunning(false);
+        appendLog(`第 ${cycle} 轮：未完成，循环结束`);
     };
 
     const runAutomationCycle = async (cycle = 1, configOverride?: AutomationConfig) => {
@@ -326,9 +366,14 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onSess
         setAutoRunning(true);
         setAutoCycle(cycle);
         setAutoStatus(`第 ${cycle} 轮：发送主查询…`);
+        appendLog(`第 ${cycle} 轮：开始执行`);
 
         try {
-            const firstReply = await sendContent(buildPromptWithDocs(config.taskPrompt, true, config));
+            const target = autoTargetSessionId || sessionId;
+            const firstReply = await sendContent(buildPromptWithDocs(config.taskPrompt, true, config), target, true);
+            if (firstReply?.content) {
+                appendLog(`第 ${cycle} 轮主查询回复：${firstReply.content}`);
+            }
             if (matchesCompletion(firstReply, config.completionSignal)) {
                 handleAutomationSuccess(config, cycle);
                 return;
@@ -336,7 +381,10 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onSess
 
             if (config.nextStep.trim()) {
                 setAutoStatus('未检测到标记，发送下一步指令…');
-                const followReply = await sendContent(buildPromptWithDocs(config.nextStep, true, config));
+                const followReply = await sendContent(buildPromptWithDocs(config.nextStep, true, config), target, true);
+                if (followReply?.content) {
+                    appendLog(`第 ${cycle} 轮补充查询回复：${followReply.content}`);
+                }
                 if (matchesCompletion(followReply, config.completionSignal)) {
                     handleAutomationSuccess(config, cycle);
                     return;
@@ -405,7 +453,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onSess
                     <motion.div
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="max-w-5xl mx-auto rounded-3xl border bg-card/80 backdrop-blur-md shadow-lg shadow-primary/5 p-4 space-y-4"
+                        className="max-w-5xl mx-auto rounded-3xl border bg-card/80 backdrop-blur-md shadow-lg shadow-primary/5 p-4 space-y-4 max-h-[72vh] overflow-y-auto pr-2"
                     >
                         <div className="flex flex-wrap gap-3 items-start justify-between">
                             <div className="space-y-1">
@@ -570,10 +618,10 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onSess
                                             placeholder="未给出完成标记时追加的指令，将自动附上文档内容"
                                         />
                                     </div>
-                                    <div className="grid grid-cols-2 gap-3">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <div className="space-y-2">
                                             <label className="text-sm font-medium">最大循环次数</label>
-                                            <div className="flex gap-2 items-center">
+                                            <div className="flex gap-2 items-center flex-wrap">
                                                 <Input
                                                     type="number"
                                                     min={1}
@@ -663,20 +711,44 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onSess
                 </div>
             )}
 
+            {mode === 'doc-dev' && (
+                <div className="max-w-5xl mx-auto w-full px-4 mb-4">
+                    <div className="rounded-2xl border bg-muted/30 p-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-sm font-medium">
+                                <Loader2 className="h-4 w-4 text-primary animate-spin" />
+                                自动执行结果记录
+                            </div>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 px-2 rounded-full"
+                                onClick={() => setAutoLogs([])}
+                                disabled={autoLogs.length === 0}
+                            >
+                                清空
+                            </Button>
+                        </div>
+                        {autoLogs.length === 0 ? (
+                            <p className="text-xs text-muted-foreground">还没有执行记录，点击“自动执行”后会在此累计展示每一轮的返回内容。</p>
+                        ) : (
+                            <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
+                                {autoLogs.map((log, idx) => (
+                                    <div key={idx} className="text-xs text-foreground bg-background/80 border rounded-xl px-3 py-2 leading-relaxed">
+                                        {log}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
             <MessageList
                 messages={messages}
                 streamingContent={streamingContent}
                 isLoading={isMessagesLoading || isLoading}
             />
-            {isMessagesLoading && (
-                <div className="max-w-3xl mx-auto w-full px-4 -mt-4 mb-4">
-                    <div className="h-24 rounded-2xl bg-gradient-to-r from-muted/60 via-muted/30 to-muted/60 animate-pulse shadow-sm border border-border/50 relative overflow-hidden">
-                        <div className="absolute inset-0 flex items-center justify-center">
-                            <Loader2 className="h-6 w-6 text-primary animate-spin" />
-                        </div>
-                    </div>
-                </div>
-            )}
             {error && (
                 <div className="px-6 pb-2 text-sm text-red-500">
                     发送失败：{error}
