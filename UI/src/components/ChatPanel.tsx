@@ -87,6 +87,7 @@ type SessionUiState = {
     autoTargetSessionId: string | null;
     autoRunning: boolean;
     autoAbort: boolean;
+    rootId: string;
     pendingPrefill?: string;
 };
 
@@ -206,6 +207,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
 
     const persistSessionState = async (id: string | null) => {
         if (!id) return;
+        const rootId = resolveRootId(id);
         const all = { ...sessionStateRef.current };
         all[id] = {
             docBasePath,
@@ -227,6 +229,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
             autoTargetSessionId,
             autoRunning,
             autoAbort,
+            rootId,
             pendingPrefill,
         };
         sessionStateRef.current = all;
@@ -255,6 +258,13 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         }
 
         if (!state) return false;
+
+        const rootId = resolveRootId(id);
+        if (!state.rootId) {
+            state = { ...state, rootId };
+            sessionStateRef.current[id] = state;
+            void setSessionState(id, JSON.stringify(state));
+        }
 
         setDocBasePath(state.docBasePath || '');
         setDocFiles(
@@ -366,7 +376,6 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         autoRunning,
         autoAbort,
         pendingPrefill,
-        stateVersion,
     ]);
 
     useEffect(() => {
@@ -377,35 +386,29 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
     }, []);
 
     const aggregatedPromptLogs = useMemo(() => {
-        const root = resolveRootId(sessionId);
-        const ids = Object.keys(sessionRoots || {}).filter((sid) => resolveRootId(sid) === root);
-        if (!ids.includes(sessionId)) ids.push(sessionId);
+        const currentRoot = resolveRootId(sessionId);
         const logs: { sessionId: string; text: string }[] = [];
-        ids.forEach((sid) => {
-            const st = sessionStateRef.current[sid];
-            if (st?.autoPromptLogs?.length) {
-                st.autoPromptLogs.forEach((text) => logs.push({ sessionId: sid, text }));
-            }
+        Object.entries(sessionStateRef.current).forEach(([sid, st]) => {
+            const stRoot = st?.rootId || resolveRootId(sid);
+            if (stRoot !== currentRoot) return;
+            (st.autoPromptLogs || []).forEach((text) => logs.push({ sessionId: sid, text }));
         });
         return logs;
-    }, [sessionId, sessionRoots, stateVersion]);
+    }, [sessionId, stateVersion]);
 
     const aggregatedCycleLogs = useMemo(() => {
-        const root = resolveRootId(sessionId);
-        const ids = Object.keys(sessionRoots || {}).filter((sid) => resolveRootId(sid) === root);
-        if (!ids.includes(sessionId)) ids.push(sessionId);
+        const currentRoot = resolveRootId(sessionId);
         const result: { sessionId: string; cycleId: string; logs: string[] }[] = [];
-        ids.forEach((sid) => {
-            const st = sessionStateRef.current[sid];
-            if (st?.cycleLogs) {
-                Object.entries(st.cycleLogs).forEach(([cycleId, logs]) => {
-                    result.push({ sessionId: sid, cycleId, logs });
-                });
-            }
+        Object.entries(sessionStateRef.current).forEach(([sid, st]) => {
+            const stRoot = st?.rootId || resolveRootId(sid);
+            if (stRoot !== currentRoot) return;
+            Object.entries(st.cycleLogs || {}).forEach(([cycleId, logs]) => {
+                result.push({ sessionId: sid, cycleId, logs });
+            });
         });
         // 最新的 cycleId 优先，其次按 sessionId
         return result.sort((a, b) => Number(b.cycleId) - Number(a.cycleId) || a.sessionId.localeCompare(b.sessionId));
-    }, [sessionId, sessionRoots, stateVersion]);
+    }, [sessionId, stateVersion]);
 
     useEffect(() => {
         if (automationQueue) {
