@@ -262,7 +262,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                 if (!skipUiInjection && targetSession === sessionId) {
                     setStreamingContent((prev) => prev + chunk);
                 }
-            });
+            }, mode === 'doc-dev' ? docBasePath : undefined);
 
             const updated = await getMessages(targetSession);
             if (!skipUiInjection && targetSession === sessionId) {

@@ -47,11 +47,13 @@ pub async fn send_message(
     content: String,
     model: Option<String>,
     thinking_depth: Option<String>,
+    working_dir: Option<String>,
 ) -> Result<(), String> {
     println!(
-        "[commands] send_message session_id={} content_preview={}",
+        "[commands] send_message session_id={} content_preview={} working_dir={:?}",
         session_id,
-        content.chars().take(80).collect::<String>()
+        content.chars().take(80).collect::<String>(),
+        working_dir
     );
 
     db.add_message(&session_id, "user", &content)
@@ -71,7 +73,7 @@ pub async fn send_message(
 
     let window_clone = window.clone();
     let response = client
-        .chat_stream(chat_messages, model, thinking_depth, move |chunk| {
+        .chat_stream(chat_messages, model, thinking_depth, working_dir, move |chunk| {
             let _ = window_clone.emit("message-chunk", chunk);
         })
         .await

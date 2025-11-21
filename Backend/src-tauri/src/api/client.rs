@@ -32,6 +32,7 @@ impl CodexClient {
         messages: Vec<ChatMessage>,
         model_override: Option<String>,
         thinking_depth: Option<String>,
+        working_dir: Option<String>,
         mut on_chunk: F,
     ) -> Result<String>
     where
@@ -40,8 +41,9 @@ impl CodexClient {
         let prompt = build_prompt(messages);
 
         log_info(&format!(
-            "准备调用 codex，model={}，prompt-preview={}",
+            "准备调用 codex，model={}，working_dir={:?}，prompt-preview={}",
             model_override.clone().unwrap_or_else(|| self.model.clone()),
+            working_dir,
             prompt.chars().take(80).collect::<String>()
         ));
 
@@ -56,8 +58,26 @@ impl CodexClient {
             .arg("--model")
             .arg(model_override.unwrap_or_else(|| self.model.clone()))
             .arg("--sandbox")
-            .arg("workspace-write")
-            .arg("--skip-git-repo-check")
+            .arg("danger-full-access")
+            .arg("--skip-git-repo-check");
+
+        // 添加工作目录参数
+        if let Some(ref dir) = working_dir {
+            // 展开 ~ 为用户主目录
+            let expanded_dir = if dir.starts_with("~/") {
+                if let Ok(home) = std::env::var("HOME") {
+                    dir.replace("~/", &format!("{}/", home))
+                } else {
+                    dir.clone()
+                }
+            } else {
+                dir.clone()
+            };
+            log_info(&format!("设置工作目录: {}", expanded_dir));
+            command.arg("-C").arg(&expanded_dir);
+        }
+
+        command
             .arg(prompt)
             .stderr(Stdio::piped())
             .stdout(Stdio::piped());
@@ -174,7 +194,7 @@ impl CodexClient {
     pub async fn chat(&self, messages: Vec<ChatMessage>) -> Result<String> {
         let mut buffer = String::new();
         let _ = self
-            .chat_stream(messages, None, None, |chunk| buffer.push_str(&chunk))
+            .chat_stream(messages, None, None, None, |chunk| buffer.push_str(&chunk))
             .await?;
         Ok(buffer)
     }

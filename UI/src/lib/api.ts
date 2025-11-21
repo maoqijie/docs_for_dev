@@ -88,7 +88,8 @@ export async function sendMessage(
     content: string,
     model: string,
     thinkingDepth: string,
-    onChunk: (chunk: string) => void
+    onChunk: (chunk: string) => void,
+    workingDir?: string
 ): Promise<void> {
     try {
         // 调用后端命令
@@ -99,6 +100,7 @@ export async function sendMessage(
             content,
             model,
             thinking_depth: thinkingDepth,
+            working_dir: workingDir,
         });
 
         // 若需要流式展示，可在此扩展（当前后端已写入 DB，前端后续 reload）
