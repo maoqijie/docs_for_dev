@@ -146,9 +146,9 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
     const [autoConfig, setAutoConfig] = useState<AutomationConfig>({
         taskPrompt:
             '帮我检查 {documents} 中描述的功能是否已经完全按文档实现，如果完全符合，请输出精确的完成标记。',
-        completionSignal: '【完成】',
+        completionSignal: '已完全根据文档完成',
         nextStep:
-            '如果上一条没有给出完成标记，请继续补充缺口并再次输出相同的完成标记。',
+            '继续根据文档完成',
         autoRestartSession: true,
         newSessionEachLoop: true,
         maxCycles: 3,
@@ -160,10 +160,10 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
     const [autoStatus, setAutoStatus] = useState('');
     const [automationQueue, setAutomationQueue] = useState<AutomationQueue | null>(null);
     const [pendingPrefill, setPendingPrefill] = useState<string | undefined>(undefined);
-    const [autoLogs, setAutoLogs] = useState<string[]>([]);
     const [autoTargetSessionId, setAutoTargetSessionId] = useState<string | null>(null);
     const [autoAbort, setAutoAbort] = useState(false);
     const [autoPromptLogs, setAutoPromptLogs] = useState<string[]>([]);
+    const [cycleLogs, setCycleLogs] = useState<Record<number, string[]>>({});
     const [lastCycleMs, setLastCycleMs] = useState<number | null>(null);
     const [sessionElapsedMs, setSessionElapsedMs] = useState(0);
     const [rootElapsedMap, setRootElapsedMap] = useState<Record<string, number>>({});
@@ -176,9 +176,9 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
     useEffect(() => {
         setStreamingContent('');
         setError(null);
-        setAutoLogs([]);
         setAutoTargetSessionId(null);
         setAutoPromptLogs([]);
+        setCycleLogs({});
         loadMessages();
     }, [sessionId]);
 
@@ -210,10 +210,25 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
     };
 
     const messageHasCompletion = (message: Message | null, signal: string) => {
-        const trimmed = signal.trim();
-        if (!trimmed) return false;
-        // 仅检查当前轮的最后回复，修复阶段（下一步）不采纳
-        return Boolean(message?.content?.includes(trimmed));
+        const mark = signal.trim();
+        if (!mark || !message?.content) return false;
+
+        // 若正文仍提到未完成/待办/告警，拒绝判定完成
+        const warningTokens = ['⚠', '🔴', '未完成', '待完成', '待办', 'TODO', 'todo', '未落地', '缺失', '需补'];
+        if (warningTokens.some((t) => message.content.includes(t))) return false;
+
+        const lines = message.content
+            .split(/\r?\n/)
+            .map((l) => l.trim())
+            .filter(Boolean);
+
+        return lines.some((line) => {
+            const normalized = line
+                .replace(/^`+|`+$/g, '')
+                .replace(/^\*+|\*+$/g, '')
+                .trim();
+            return normalized === mark;
+        });
     };
 
     const sendContent = async (
@@ -266,10 +281,14 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         }
     };
 
-    const appendLog = (text: string) => {
+    const appendLog = (text: string, cycleId: number = autoCycle) => {
         const entry = text.trim();
         if (!entry) return;
-        setAutoLogs((prev) => [entry, ...prev].slice(0, 50));
+        setCycleLogs((prev) => {
+            const current = prev[cycleId] || [];
+            const next = [entry, ...current].slice(0, 200);
+            return { ...prev, [cycleId]: next };
+        });
     };
 
     const recordElapsed = (elapsed: number) => {
@@ -282,10 +301,14 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         });
     };
 
-    const appendPromptLog = (text: string) => {
+    const appendPromptLog = (text: string, cycleId: number = autoCycle) => {
         const entry = text.trim();
         if (!entry) return;
-        setAutoPromptLogs((prev) => [entry, ...prev].slice(0, 20));
+        setCycleLogs((prev) => {
+            const current = prev[cycleId] || [];
+            const next = [`【提示】${entry}`, ...current].slice(0, 200);
+            return { ...prev, [cycleId]: next };
+        });
     };
 
     const handleSend = async (content: string) => {
@@ -342,7 +365,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         const docBlock = buildDocBlock(docFiles, docBasePath);
         const workdir = docBasePath?.trim() || './';
         const workdirHint = `工作目录: ${workdir}\n当你需要修改/创建文件时，请在此目录下使用文档给出的相对路径进行操作。`;
-        const fixDirective = `若发现实现与文档不符，请立即在工作目录内按文档相对路径直接修改/创建文件完成修复，不要仅给检查结论；修复完毕请输出完成标记：${customConfig.completionSignal.trim() || '【完成】'}。`;
+        const fixDirective = `若发现实现与文档不符，请立即在工作目录内按文档相对路径直接修改/创建文件完成修复，不要仅给检查结论；修复完毕请输出完成标记：${customConfig.completionSignal.trim() || '已完全根据文档完成'}。`;
 
         let promptBody = template.includes('{documents}')
             ? template.replace('{documents}', docBlock || '（未选择文档，请先选择）')
@@ -353,7 +376,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         }
 
         const prompt = `${workdirHint}\n${fixDirective}\n\n${promptBody}`;
-        appendPromptLog(prompt);
+        appendPromptLog(prompt, autoCycle);
         return prompt;
     };
 
@@ -403,7 +426,8 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         setAutoStatus(`检测到完成标记「${config.completionSignal}」，在第 ${cycle} 轮完成。`);
         setAutoRunning(false);
         notifyCompletion(config.notifyText || '文档开发任务已完成');
-        appendLog(`第 ${cycle} 轮：已完成，输出包含标记「${config.completionSignal}」`);
+        appendLog(`第 ${cycle} 轮：已完成，输出包含标记「${config.completionSignal}」`, cycle);
+        setAutoTargetSessionId(null);
     };
 
     const handleAutomationFailure = async (config: AutomationConfig, cycle: number) => {
@@ -426,7 +450,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         }
         setAutoStatus('未检测到完成标记，自动循环已停止');
         setAutoRunning(false);
-        appendLog(`第 ${cycle} 轮：未完成，循环结束`);
+        appendLog(`第 ${cycle} 轮：未完成，循环结束`, cycle);
     };
 
     const runAutomationCycle = async (cycle = 1, configOverride?: AutomationConfig) => {
@@ -447,7 +471,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
             const startedAt = Date.now();
             const firstReply = await sendContent(buildPromptWithDocs(config.taskPrompt, true, config), target, true);
             if (firstReply?.content) {
-                appendLog(`第 ${cycle} 轮主查询回复：${firstReply.content}`);
+                appendLog(`第 ${cycle} 轮主查询回复：${firstReply.content}`, cycle);
             }
             if (autoAbort) {
                 setAutoRunning(false);
@@ -466,7 +490,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                 setAutoStatus('未检测到标记，发送下一步指令…');
                 const followReply = await sendContent(buildPromptWithDocs(config.nextStep, true, config), target, true);
                 if (followReply?.content) {
-                    appendLog(`第 ${cycle} 轮补充查询回复：${followReply.content}`);
+                    appendLog(`第 ${cycle} 轮补充查询回复：${followReply.content}`, cycle);
                 }
                 if (autoAbort) {
                     setAutoRunning(false);
@@ -710,7 +734,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                                             onChange={(e) =>
                                                 setAutoConfig((prev) => ({ ...prev, completionSignal: e.target.value }))
                                             }
-                                            placeholder="如：完成 或 【完成】"
+                                            placeholder="如：完成 或 已完全根据文档完成"
                                         />
                                     </div>
                                     <div className="space-y-2">
@@ -847,11 +871,11 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                                     size="sm"
                                     className="h-8 px-2 rounded-full"
                                     onClick={() => {
-                                        setAutoLogs([]);
                                         setAutoPromptLogs([]);
                                         setLastCycleMs(null);
                                         setSessionElapsedMs(0);
                                         setRootElapsedMap({});
+                                        setCycleLogs({});
                                     }}
                                 >
                                     清空
@@ -875,15 +899,24 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                             </div>
                             <div className="space-y-2">
                                 <div className="text-xs font-semibold text-muted-foreground">Codex 返回</div>
-                                {autoLogs.length === 0 ? (
+                                {Object.keys(cycleLogs).length === 0 ? (
                                     <p className="text-xs text-muted-foreground">还没有执行记录，点击“自动执行”后会在此累计展示每一轮的返回内容。</p>
                                 ) : (
                                     <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
-                                        {autoLogs.map((log, idx) => (
-                                            <div key={idx} className="text-xs text-foreground bg-background/80 border rounded-xl px-3 py-2 leading-relaxed">
-                                                {log}
-                                            </div>
-                                        ))}
+                                        {Object.entries(cycleLogs)
+                                            .sort((a, b) => Number(b[0]) - Number(a[0]))
+                                            .map(([cycleId, logs]) => (
+                                                <div key={cycleId} className="border rounded-xl bg-background/80">
+                                                    <div className="px-3 py-1 text-[11px] text-muted-foreground border-b">第 {cycleId} 轮</div>
+                                                    <div className="space-y-1 px-3 py-2">
+                                                        {logs.map((log, idx) => (
+                                                            <div key={idx} className="text-xs text-foreground leading-relaxed whitespace-pre-wrap">
+                                                                {log}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            ))}
                                     </div>
                                 )}
                             </div>
