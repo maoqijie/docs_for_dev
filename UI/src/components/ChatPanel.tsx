@@ -108,7 +108,7 @@ const buildDocBlock = (docs: DocFile[], baseDir: string) => {
     return docs
         .map(
             (doc, index) =>
-                `【文档${index + 1}: ${doc.name}】\n工作目录: ${dir}\n相对路径: ${doc.relativePath || doc.path}\n大小: ${formatBytes(doc.size)}\n内容:\n${doc.content.trim()}`
+                `【文档${index + 1}: ${doc.name}】\n工作目录: ${dir}\n相对路径: ${doc.relativePath || doc.path}\n绝对路径: ${doc.path}\n大小: ${formatBytes(doc.size)}`
         )
         .join('\n\n');
 };
@@ -751,7 +751,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                                                 setAutoConfig((prev) => ({ ...prev, nextStep: e.target.value }))
                                             }
                                             className="bg-background/80"
-                                            placeholder="未给出完成标记时追加的指令，将自动附上文档内容"
+                                            placeholder="未给出完成标记时追加的指令，将自动附上文档路径（Codex会用Read工具读取）"
                                         />
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
