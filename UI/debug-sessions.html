@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>会话调试工具</title>
+    <style>
+        body { font-family: monospace; padding: 20px; }
+        pre { background: #f5f5f5; padding: 10px; border-radius: 5px; }
+        button { margin: 5px; padding: 10px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>会话数据调试工具</h1>
+
+    <button onclick="showLocalStorage()">查看 LocalStorage 数据</button>
+    <button onclick="clearSessionRoots()">清理 SessionRoots</button>
+    <button onclick="clearAll()">清理所有会话数据</button>
+
+    <h2>LocalStorage 数据：</h2>
+    <pre id="storage-data">点击"查看 LocalStorage 数据"按钮</pre>
+
+    <script>
+        function showLocalStorage() {
+            const data = {
+                mode: localStorage.getItem('codex-mode'),
+                sessionModes: localStorage.getItem('codex-session-mode-map'),
+                sessionRoots: localStorage.getItem('codex-session-root-map'),
+            };
+
+            const parsed = {
+                mode: data.mode,
+                sessionModes: data.sessionModes ? JSON.parse(data.sessionModes) : null,
+                sessionRoots: data.sessionRoots ? JSON.parse(data.sessionRoots) : null,
+            };
+
+            document.getElementById('storage-data').textContent = JSON.stringify(parsed, null, 2);
+            console.log('LocalStorage 数据:', parsed);
+        }
+
+        function clearSessionRoots() {
+            localStorage.removeItem('codex-session-root-map');
+            alert('已清理 sessionRoots，请刷新页面');
+            showLocalStorage();
+        }
+
+        function clearAll() {
+            if (confirm('确认清理所有会话数据？这将重置模式选择和会话映射。')) {
+                localStorage.removeItem('codex-mode');
+                localStorage.removeItem('codex-session-mode-map');
+                localStorage.removeItem('codex-session-root-map');
+                alert('已清理所有数据，请刷新页面');
+                showLocalStorage();
+            }
+        }
+    </script>
+</body>
+</html>

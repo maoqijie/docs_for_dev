@@ -73,8 +73,10 @@ function App() {
       .filter((s) => {
         const m = sessionModes[s.id];
         if (mode === 'doc-dev') {
-          return m === 'doc-dev';
+          // 显示明确标记为 doc-dev 的会话，以及没有标记的旧会话
+          return m === 'doc-dev' || m === undefined;
         }
+        // 通用模式：显示非 doc-dev 的会话（包括 undefined 和 general）
         return m !== 'doc-dev';
       })
       .filter((s) => {
@@ -110,8 +112,18 @@ function App() {
 
       const first = pickFirstByMode(data, sessionModes, mode);
       const existsCurrent = data.some((d) => d.id === currentSessionId);
+      // 检查当前会话是否匹配当前模式（包括未标记的旧会话）
       const currentModeMatch = currentSessionId
-        ? sessionModes[currentSessionId] === (mode || 'general') || (!sessionModes[currentSessionId] && mode === 'general')
+        ? (() => {
+            const m = sessionModes[currentSessionId];
+            if (!mode) return true; // 无模式时都匹配
+            if (mode === 'doc-dev') {
+              // doc-dev 模式：匹配 doc-dev 或未标记的会话
+              return m === 'doc-dev' || m === undefined;
+            }
+            // 通用模式：匹配非 doc-dev 的会话
+            return m !== 'doc-dev';
+          })()
         : false;
 
       if (!existsCurrent || !currentModeMatch) {
