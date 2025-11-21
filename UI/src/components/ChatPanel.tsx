@@ -16,7 +16,6 @@ import { Button } from './ui/button';
 interface ChatPanelProps {
     sessionId: string;
     mode: 'doc-dev' | 'general';
-    onModeChange: (mode: 'doc-dev' | 'general') => void;
     onModeBack: () => void;
 }
 
@@ -36,12 +35,7 @@ const THINKING_LEVELS = [
     { id: 'high', name: 'High Effort' },
 ];
 
-const MODES = [
-    { id: 'doc-dev', name: '文档开发模式 (默认)' },
-    { id: 'general', name: '通用模式' },
-];
-
-export function ChatPanel({ sessionId, mode, onModeChange, onModeBack }: ChatPanelProps) {
+export function ChatPanel({ sessionId, mode, onModeBack }: ChatPanelProps) {
     const [messages, setMessages] = useState<Message[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [isMessagesLoading, setIsMessagesLoading] = useState(true);
@@ -119,68 +113,43 @@ export function ChatPanel({ sessionId, mode, onModeChange, onModeBack }: ChatPan
             animate={{ opacity: 1 }}
             className="flex flex-col h-full relative"
         >
-            {/* 顶部控制栏 - 固定在内容上方，不占据头部 */}
-            <div className="max-w-4xl mx-auto w-full px-4 pt-6 flex flex-wrap gap-2 justify-start items-center">
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-9 w-9 rounded-full"
-                    onClick={onModeBack}
-                    title="返回模式选择"
-                >
-                    <ChevronLeft className="h-4 w-4" />
-                </Button>
+            {/* 顶部控制栏 - 紧贴内容左上方（模式已移到侧边栏） */}
+            <div className="w-full px-4 pt-3">
+                <div className="flex flex-wrap gap-2 items-center">
+                    {/* 模型选择 */}
+                    <Select value={model} onValueChange={setModel}>
+                        <SelectTrigger className="w-[220px] bg-background/80 backdrop-blur-sm shadow-sm border-border/50 rounded-full h-9 px-4 transition-all hover:bg-accent/50">
+                            <div className="flex items-center gap-2 truncate">
+                                <Sparkles className="h-3.5 w-3.5 text-primary flex-shrink-0" />
+                                <SelectValue placeholder="选择模型" />
+                            </div>
+                        </SelectTrigger>
+                        <SelectContent>
+                            {MODELS.map((m) => (
+                                <SelectItem key={m.id} value={m.id} className="cursor-pointer">
+                                    {m.name}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
 
-                {/* 模式选择 */}
-                <Select value={mode} onValueChange={onModeChange}>
-                    <SelectTrigger className="w-[200px] bg-background/80 backdrop-blur-sm shadow-sm border-border/50 rounded-full h-9 px-4 transition-all hover:bg-accent/50">
-                        <div className="flex items-center gap-2 truncate">
-                            <Sparkles className="h-3.5 w-3.5 text-primary flex-shrink-0" />
-                            <SelectValue placeholder="选择模式" />
-                        </div>
-                    </SelectTrigger>
-                    <SelectContent>
-                        {MODES.map((m) => (
-                            <SelectItem key={m.id} value={m.id} className="cursor-pointer">
-                                {m.name}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
-
-                {/* 模型选择 */}
-                <Select value={model} onValueChange={setModel}>
-                    <SelectTrigger className="w-[220px] bg-background/80 backdrop-blur-sm shadow-sm border-border/50 rounded-full h-9 px-4 transition-all hover:bg-accent/50">
-                        <div className="flex items-center gap-2 truncate">
-                            <Sparkles className="h-3.5 w-3.5 text-primary flex-shrink-0" />
-                            <SelectValue placeholder="选择模型" />
-                        </div>
-                    </SelectTrigger>
-                    <SelectContent>
-                        {MODELS.map((m) => (
-                            <SelectItem key={m.id} value={m.id} className="cursor-pointer">
-                                {m.name}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
-
-                {/* 思考深度选择 */}
-                <Select value={thinkingDepth} onValueChange={setThinkingDepth}>
-                    <SelectTrigger className="w-[160px] bg-background/80 backdrop-blur-sm shadow-sm border-border/50 rounded-full h-9 px-4 transition-all hover:bg-accent/50">
-                        <div className="flex items-center gap-2">
-                            <BrainCircuit className="h-3.5 w-3.5 text-purple-500" />
-                            <SelectValue placeholder="思考深度" />
-                        </div>
-                    </SelectTrigger>
-                    <SelectContent>
-                        {currentThinkingLevels.map((l) => (
-                            <SelectItem key={l.id} value={l.id} className="cursor-pointer">
-                                {l.name}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
+                    {/* 思考深度选择 */}
+                    <Select value={thinkingDepth} onValueChange={setThinkingDepth}>
+                        <SelectTrigger className="w-[160px] bg-background/80 backdrop-blur-sm shadow-sm border-border/50 rounded-full h-9 px-4 transition-all hover:bg-accent/50">
+                            <div className="flex items-center gap-2">
+                                <BrainCircuit className="h-3.5 w-3.5 text-purple-500" />
+                                <SelectValue placeholder="思考深度" />
+                            </div>
+                        </SelectTrigger>
+                        <SelectContent>
+                            {currentThinkingLevels.map((l) => (
+                                <SelectItem key={l.id} value={l.id} className="cursor-pointer">
+                                    {l.name}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
             </div>
 
             {showTopLoader && (
@@ -215,6 +184,19 @@ export function ChatPanel({ sessionId, mode, onModeChange, onModeBack }: ChatPan
                 </div>
             )}
             <InputBox onSend={handleSend} disabled={isLoading} />
+
+            {/* 左下角返回按钮 */}
+            <div className="fixed left-4 bottom-4 z-20">
+                <Button
+                    variant="secondary"
+                    size="icon"
+                    className="h-10 w-10 rounded-full shadow-lg"
+                    onClick={onModeBack}
+                    title="返回模式选择"
+                >
+                    <ChevronLeft className="h-5 w-5" />
+                </Button>
+            </div>
         </motion.div>
     );
 }

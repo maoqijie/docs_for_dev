@@ -81,6 +81,7 @@ function App() {
           onSessionSelect={setCurrentSessionId}
           onNewSession={handleNewSession}
           onDeleteSession={handleDeleteSession}
+          mode={mode || 'doc-dev'}
         />
 
         {/* 主内容区 */}
@@ -131,7 +132,6 @@ function App() {
               key={currentSessionId}
               sessionId={currentSessionId}
               mode={mode || 'doc-dev'}
-              onModeChange={handleSelectMode}
               onModeBack={handleBackToModePicker}
             />
           ) : (

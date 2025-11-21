@@ -13,6 +13,7 @@ interface SidebarProps {
     onSessionSelect: (id: string) => void;
     onNewSession: () => void;
     onDeleteSession: (id: string) => void;
+    mode: 'doc-dev' | 'general';
 }
 
 export function Sidebar({
@@ -21,13 +22,14 @@ export function Sidebar({
     onSessionSelect,
     onNewSession,
     onDeleteSession,
+    mode,
 }: SidebarProps) {
     const { theme, setTheme } = useTheme();
 
     return (
         <div className="w-72 border-r bg-muted/10 backdrop-blur-xl flex flex-col h-full transition-all duration-300 ease-in-out">
             {/* 头部 */}
-            <div className="p-6 space-y-6">
+            <div className="p-6 space-y-4">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                         <div className="p-2 bg-primary/10 rounded-xl">
@@ -49,6 +51,13 @@ export function Sidebar({
                             <Moon className="h-5 w-5 text-slate-700" />
                         )}
                     </Button>
+                </div>
+
+                <div className="flex items-center gap-2 px-2 py-2 rounded-xl border bg-background/70">
+                    <Sparkles className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-medium">
+                        {mode === 'doc-dev' ? '文档开发模式 (默认)' : '通用模式'}
+                    </span>
                 </div>
 
                 <Button
