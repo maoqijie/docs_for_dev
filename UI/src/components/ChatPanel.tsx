@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { type Message, type Session, getMessages, sendMessage } from '../lib/api';
+import { type Message, type Session, getMessages, sendMessage, pickDocuments } from '../lib/api';
 import { MessageList } from './MessageList';
 import { InputBox } from './InputBox';
 import { motion } from 'framer-motion';
@@ -45,6 +45,7 @@ type DocFile = {
     size: number;
     content: string;
     relativePath: string;
+    absPath?: string;
 };
 
 type AutomationConfig = {
@@ -69,6 +70,7 @@ type PersistedDocFile = {
     name: string;
     size: number;
     relativePath: string;
+    absPath?: string;
 };
 
 type SessionUiState = {
@@ -168,7 +170,7 @@ const buildDocBlock = (docs: DocFile[], baseDir: string) => {
     return docs
         .map(
             (doc, index) =>
-                `【文档${index + 1}: ${doc.name}】\n工作目录: ${dir}\n相对路径: ${doc.relativePath || doc.path}\n绝对路径: ${doc.path}\n大小: ${formatBytes(doc.size)}`
+                `【文档${index + 1}: ${doc.name}】\n工作目录: ${dir}\n相对路径: ${doc.relativePath || doc.path}\n绝对路径: ${doc.absPath || doc.path}\n大小: ${formatBytes(doc.size)}`
         )
         .join('\n\n');
 };
@@ -502,6 +504,63 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         setIsPickingDocs(false);
     };
 
+    const inferCommonDir = (paths: string[]): string => {
+        if (paths.length === 0) return '';
+        const splitPaths = paths.map((p) => p.split(/[\\/]+/).filter(Boolean));
+        const minLen = Math.min(...splitPaths.map((arr) => arr.length));
+        const common: string[] = [];
+        for (let i = 0; i < minLen; i++) {
+            const segment = splitPaths[0][i];
+            if (splitPaths.every((arr) => arr[i] === segment)) {
+                common.push(segment);
+            } else {
+                break;
+            }
+        }
+        return common.length ? common.join('/') : '';
+    };
+
+    const handlePickDocsNative = async () => {
+        setIsPickingDocs(true);
+        try {
+            const picked = await pickDocuments(true);
+            if (!picked.length) return;
+
+            const absPaths = picked.map((p) => p.path);
+            const commonDir = inferCommonDir(absPaths);
+
+            if (!docBasePath && commonDir) {
+                setDocBasePath(commonDir);
+            }
+
+            setDocFiles((prev) => {
+                const merged = [...prev];
+                picked.forEach((doc) => {
+                    const key = doc.path || doc.relative_path || doc.name;
+                    const existingIdx = merged.findIndex((item) => item.absPath === doc.path || item.path === key);
+                    const next: DocFile = {
+                        path: doc.relative_path || key,
+                        relativePath: doc.relative_path || key,
+                        name: doc.name,
+                        size: doc.size,
+                        content: '',
+                        absPath: doc.path,
+                    };
+                    if (existingIdx >= 0) {
+                        merged[existingIdx] = next;
+                    } else {
+                        merged.push(next);
+                    }
+                });
+                return merged;
+            });
+        } catch (err) {
+            console.error('选择文档失败', err);
+        } finally {
+            setIsPickingDocs(false);
+        }
+    };
+
     const handlePickDocs = () => {
         docInputRef.current?.click();
     };
@@ -751,17 +810,26 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                         <div className="grid md:grid-cols-[2fr_1.15fr] gap-4">
                             <div className="space-y-3">
                                 <div className="rounded-2xl border bg-muted/30 p-3 space-y-3">
-                                    <div className="flex items-center justify-between gap-2">
-                                        <div className="flex items-center gap-2 text-sm font-medium">
-                                            <FilePlus2 className="h-4 w-4" />
-                                            选择参考文档（可多选，自动插入提示）
-                                        </div>
-                                        <div className="flex gap-2">
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                onClick={handlePickDocs}
-                                                disabled={isPickingDocs}
+                                <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2 text-sm font-medium">
+                                        <FilePlus2 className="h-4 w-4" />
+                                        选择参考文档（可多选，自动插入提示）
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={handlePickDocsNative}
+                                            disabled={isPickingDocs}
+                                            className="rounded-full"
+                                        >
+                                            绝对路径选择
+                                        </Button>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={handlePickDocs}
+                                            disabled={isPickingDocs}
                                                 className="rounded-full"
                                             >
                                                 {isPickingDocs ? (

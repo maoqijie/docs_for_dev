@@ -1,8 +1,10 @@
 use std::sync::Arc;
 use std::collections::HashMap;
 use std::sync::Mutex;
+use std::path::{Path, PathBuf};
 
 use tauri::{Emitter, State, Window};
+use serde::Serialize;
 
 use crate::{
     api::{ChatMessage, CodexClient},
@@ -185,4 +187,134 @@ pub async fn get_template_path(
     path.to_str()
         .map(|s| s.to_string())
         .ok_or_else(|| "模板路径包含非 UTF-8 字符".to_string())
+}
+
+#[derive(Serialize)]
+pub struct PickedDocument {
+    path: String,
+    name: String,
+    size: u64,
+    relative_path: String,
+}
+
+fn collect_files(root: &Path, recursive: bool) -> Vec<PathBuf> {
+    let mut result = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+
+    while let Some(path) = stack.pop() {
+        if path.is_dir() {
+            if recursive {
+                if let Ok(read_dir) = std::fs::read_dir(&path) {
+                    for entry in read_dir.flatten() {
+                        stack.push(entry.path());
+                    }
+                }
+            }
+        } else if path.is_file() {
+            result.push(path);
+        }
+    }
+
+    result
+}
+
+fn common_root(paths: &[PathBuf]) -> Option<PathBuf> {
+    if paths.is_empty() {
+        return None;
+    }
+    let mut iter = paths.iter();
+    let first = iter.next()?.clone();
+    let mut prefix_components: Vec<_> = first.parent().unwrap_or_else(|| Path::new("")).components().collect();
+
+    for path in iter {
+        let mut new_prefix = Vec::new();
+        for (a, b) in prefix_components.iter().zip(path.parent().unwrap_or_else(|| Path::new("")).components()) {
+            if a == &b {
+                new_prefix.push(a.clone());
+            } else {
+                break;
+            }
+        }
+        prefix_components = new_prefix;
+        if prefix_components.is_empty() {
+            break;
+        }
+    }
+
+    if prefix_components.is_empty() {
+        None
+    } else {
+        let mut root = PathBuf::new();
+        for comp in prefix_components {
+            root.push(comp.as_os_str());
+        }
+        Some(root)
+    }
+}
+
+fn is_allowed_ext(path: &Path) -> bool {
+    match path.extension().and_then(|e| e.to_str()).map(|s| s.to_ascii_lowercase()) {
+        Some(ext) => matches!(ext.as_str(), "md" | "markdown" | "mdx" | "txt" | "log" | "json"),
+        None => false,
+    }
+}
+
+#[tauri::command]
+pub async fn pick_documents(recursive: Option<bool>) -> Result<Vec<PickedDocument>, String> {
+    let recursive = recursive.unwrap_or(true);
+
+    // 先尝试选择文件
+    let file_selection = tauri::api::dialog::blocking::FileDialogBuilder::new()
+        .set_title("选择文档")
+        .pick_files();
+
+    let mut paths: Vec<PathBuf> = Vec::new();
+    let mut root_hint: Option<PathBuf> = None;
+
+    if let Some(files) = file_selection {
+        if !files.is_empty() {
+            root_hint = files[0].parent().map(|p| p.to_path_buf());
+            paths = files;
+        }
+    } else {
+        // 再尝试选择文件夹
+        if let Some(folder) = tauri::api::dialog::blocking::FileDialogBuilder::new()
+            .set_title("选择文档文件夹")
+            .pick_folder()
+        {
+            root_hint = Some(folder.clone());
+            paths = collect_files(&folder, recursive);
+        }
+    }
+
+    if paths.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let filtered: Vec<PathBuf> = paths
+        .into_iter()
+        .filter(|p| is_allowed_ext(p))
+        .collect();
+
+    if filtered.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let root = common_root(&filtered).or(root_hint).unwrap_or_else(|| PathBuf::from("."));
+
+    let mut result = Vec::new();
+    for path in filtered {
+        if let Ok(meta) = std::fs::metadata(&path) {
+            let rel = path.strip_prefix(&root).unwrap_or(&path);
+            let item = PickedDocument {
+                name: path.file_name().and_then(|s| s.to_str()).unwrap_or_default().to_string(),
+                path: path.to_string_lossy().to_string(),
+                size: meta.len(),
+                relative_path: rel.to_string_lossy().to_string(),
+            };
+            result.push(item);
+        }
+    }
+
+    Ok(result)
 }

@@ -54,6 +54,7 @@ fn main() {
             commands::create_template,
             commands::delete_template,
             commands::get_template_path,
+            commands::pick_documents,
         ])
         .run(tauri::generate_context!())
         .expect("启动 Tauri 应用失败");

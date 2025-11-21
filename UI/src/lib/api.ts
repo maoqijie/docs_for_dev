@@ -112,3 +112,24 @@ export async function sendMessage(
         throw error;
     }
 }
+
+// ==================== 文档选择 ====================
+
+export interface PickedDocument {
+    path: string;
+    name: string;
+    size: number;
+    relative_path: string;
+}
+
+/**
+ * 通过 Tauri 调用系统文件/文件夹选择器，获取绝对路径
+ */
+export async function pickDocuments(recursive: boolean = true): Promise<PickedDocument[]> {
+    try {
+        return await invoke('pick_documents', { recursive });
+    } catch (error) {
+        console.error('pick_documents 调用失败', error);
+        return [];
+    }
+}
