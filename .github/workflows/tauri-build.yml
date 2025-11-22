@@ -45,8 +45,7 @@ jobs:
             librsvg2-dev \
             patchelf \
             pkg-config \
-            libglib2.0-dev \
-            libgobject-2.0-dev
+            libglib2.0-dev
 
       - name: Install UI deps
         run: npm ci
@@ -55,6 +54,44 @@ jobs:
       - name: Build UI
         run: npm run build
         working-directory: UI
+
+      - name: Ensure Windows icon
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          try:
+              from PIL import Image
+          except ImportError:
+              import sys, subprocess
+              subprocess.check_call([sys.executable, "-m", "pip", "install", "pillow"])
+              from PIL import Image
+
+          icon_png = Path("Backend/src-tauri/icons/icon.png")
+          icon_ico = icon_png.with_suffix(".ico")
+          img = Image.open(icon_png)
+          sizes = [(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (16, 16)]
+          img.save(icon_ico, format="ICO", sizes=sizes)
+          print(f"Generated {icon_ico} from {icon_png}")
+          PY
+
+      - name: Ensure Windows icon
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          try:
+              from PIL import Image
+          except ImportError:
+              import sys, subprocess
+              subprocess.check_call([sys.executable, "-m", "pip", "install", "pillow"])
+              from PIL import Image
+
+          icon_png = Path("Backend/src-tauri/icons/icon.png")
+          icon_ico = icon_png.with_suffix(".ico")
+          img = Image.open(icon_png)
+          sizes = [(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (16, 16)]
+          img.save(icon_ico, format="ICO", sizes=sizes)
+          print(f"Generated {icon_ico} from {icon_png}")
+          PY
 
       - name: Verify dist
         run: |
@@ -72,6 +109,7 @@ jobs:
           TAURI_DIST_DIR: ${{ github.workspace }}/UI/dist
         with:
           projectPath: Backend/src-tauri
+          distPath: ${{ github.workspace }}/UI/dist
 
   build-macos:
     needs: gate
@@ -109,6 +147,7 @@ jobs:
           TAURI_DIST_DIR: ${{ github.workspace }}/UI/dist
         with:
           projectPath: Backend/src-tauri
+          distPath: ${{ github.workspace }}/UI/dist
 
   build-windows:
     needs: gate
@@ -137,6 +176,27 @@ jobs:
           Get-ChildItem $dist
           if (-not (Test-Path "$dist\index.html")) { throw "dist missing index.html" }
 
+      - name: Ensure Windows icon
+        shell: pwsh
+        run: |
+          $iconPng = "Backend/src-tauri/icons/icon.png"
+          $iconIco = "Backend/src-tauri/icons/icon.ico"
+          python - <<'PY'
+          from pathlib import Path
+          try:
+              from PIL import Image
+          except ImportError:
+              import sys, subprocess
+              subprocess.check_call([sys.executable, "-m", "pip", "install", "pillow"])
+              from PIL import Image
+          icon_png = Path("Backend/src-tauri/icons/icon.png")
+          icon_ico = icon_png.with_suffix(".ico")
+          img = Image.open(icon_png)
+          sizes = [(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (16, 16)]
+          img.save(icon_ico, format="ICO", sizes=sizes)
+          print(f"Generated {icon_ico} from {icon_png}")
+          PY
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -147,3 +207,4 @@ jobs:
           TAURI_DIST_DIR: ${{ github.workspace }}\UI\dist
         with:
           projectPath: Backend/src-tauri
+          distPath: ${{ github.workspace }}/UI/dist
