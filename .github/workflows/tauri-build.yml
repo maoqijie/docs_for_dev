@@ -73,6 +73,12 @@ jobs:
           projectPath: Backend/src-tauri
           distPath: ${{ github.workspace }}/UI/dist
 
+      - name: Upload bundle (Linux)
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-linux
+          path: Backend/src-tauri/target/release/bundle/**
+
   build-macos:
     needs: gate
     if: needs.gate.outputs.should_run == 'true'
@@ -110,6 +116,12 @@ jobs:
         with:
           projectPath: Backend/src-tauri
           distPath: ${{ github.workspace }}/UI/dist
+
+      - name: Upload bundle (macOS)
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-macos
+          path: Backend/src-tauri/target/release/bundle/**
 
   build-windows:
     needs: gate
@@ -155,3 +167,33 @@ jobs:
         with:
           projectPath: Backend/src-tauri
           distPath: ${{ github.workspace }}/UI/dist
+
+      - name: Upload bundle (Windows)
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-windows
+          path: Backend/src-tauri/target/release/bundle/**
+
+  release:
+    needs: [gate, build-linux, build-macos, build-windows]
+    if: needs.gate.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: build-${{ github.sha }}
+          name: ${{ github.event.head_commit.message || format('build {0}', github.sha) }}
+          body: |
+            Commit: ${{ github.sha }}
+            Message: ${{ github.event.head_commit.message || 'manual dispatch' }}
+          files: artifacts/**
