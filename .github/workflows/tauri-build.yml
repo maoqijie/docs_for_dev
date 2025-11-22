@@ -80,7 +80,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: bundle-linux
-          path: Backend/src-tauri/target/release/bundle/**
+          path: |
+            Backend/src-tauri/target/release/bundle/**
+            Backend/src-tauri/target/release/*.AppImage
+            Backend/src-tauri/target/release/*.deb
+            Backend/src-tauri/target/release/*.rpm
+            Backend/src-tauri/target/release/*.bin
 
   build-macos:
     needs: gate
@@ -124,7 +129,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: bundle-macos
-          path: Backend/src-tauri/target/release/bundle/**
+          path: |
+            Backend/src-tauri/target/release/bundle/**
+            Backend/src-tauri/target/release/*.dmg
+            Backend/src-tauri/target/release/*.app
 
   build-windows:
     needs: gate
@@ -175,7 +183,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: bundle-windows
-          path: Backend/src-tauri/target/release/bundle/**
+          path: |
+            Backend/src-tauri/target/release/bundle/**
+            Backend/src-tauri/target/release/*.msi
+            Backend/src-tauri/target/release/*.exe
 
   release:
     needs: [gate, build-linux, build-macos, build-windows]

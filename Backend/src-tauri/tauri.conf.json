@@ -8,6 +8,16 @@
     "frontendDist": "../../UI/dist",
     "devUrl": "http://localhost:5173"
   },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "app",
+      "appimage",
+      "deb",
+      "msi",
+      "dmg"
+    ]
+  },
   "app": {
     "withGlobalTauri": true,
     "windows": [
