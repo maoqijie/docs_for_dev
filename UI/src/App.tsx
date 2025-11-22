@@ -100,9 +100,10 @@ function App() {
     // 第二层：只显示根会话（隐藏自动创建的子会话）
     const rootFiltered = modeFiltered.filter((s) => {
       const root = sessionRoots[s.id];
+      const isAutoLoop = s.title?.startsWith('文档自动循环');
       // 如果没有 root 记录，说明是旧会话，当作根会话
       // 如果 root === s.id，说明是根会话
-      const isRoot = !root || root === s.id;
+      const isRoot = (!root || root === s.id) && !isAutoLoop;
 
       if (!isRoot) {
         debugLog('🔍 [DEBUG] 隐藏子会话:', s.title, '(id:', s.id, ', root:', root, ')');

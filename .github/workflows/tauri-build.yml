@@ -58,6 +58,9 @@ jobs:
         run: npm run build
         working-directory: UI
 
+      - name: Generate Tauri icons
+        run: npx @tauri-apps/cli@v2 icon Backend/src-tauri/icons/icon.svg
+
       - name: Verify dist
         run: |
           DIST="${{ github.workspace }}/UI/dist"
@@ -107,6 +110,9 @@ jobs:
         run: npm run build
         working-directory: UI
 
+      - name: Generate Tauri icons
+        run: npx @tauri-apps/cli@v2 icon Backend/src-tauri/icons/icon.svg
+
       - name: Verify dist
         run: |
           DIST="${{ github.workspace }}/UI/dist"
@@ -154,18 +160,16 @@ jobs:
         run: npm run build
         working-directory: UI
 
+      - name: Generate Tauri icons
+        shell: pwsh
+        run: npx @tauri-apps/cli@v2 icon Backend/src-tauri/icons/icon.svg
+
       - name: Verify dist
         shell: pwsh
         run: |
           $dist = "${{ github.workspace }}\UI\dist"
           Get-ChildItem $dist
           if (-not (Test-Path "$dist\index.html")) { throw "dist missing index.html" }
-
-      - name: Ensure Windows icon
-        shell: pwsh
-        run: |
-          python -m pip install --user pillow
-          python -c "from pathlib import Path; from PIL import Image; p=Path('Backend/src-tauri/icons/icon.png'); ico=p.with_suffix('.ico'); img=Image.open(p); sizes=[(256,256),(128,128),(64,64),(48,48),(32,32),(16,16)]; img.save(ico, format='ICO', sizes=sizes); print(f'Generated {ico} from {p}')"
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
