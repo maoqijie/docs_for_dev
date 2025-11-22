@@ -44,7 +44,10 @@ jobs:
         working-directory: UI
 
       - name: Verify dist
-        run: ls -la "${{ github.workspace }}/UI/dist"
+        run: |
+          DIST="${{ github.workspace }}/UI/dist"
+          ls -la "$DIST"
+          test -f "$DIST/index.html"
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -78,7 +81,10 @@ jobs:
         working-directory: UI
 
       - name: Verify dist
-        run: ls -la "${{ github.workspace }}/UI/dist"
+        run: |
+          DIST="${{ github.workspace }}/UI/dist"
+          ls -la "$DIST"
+          test -f "$DIST/index.html"
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -112,7 +118,10 @@ jobs:
         working-directory: UI
 
       - name: Verify dist
-        run: ls -la "${{ github.workspace }}/UI/dist"
+        run: |
+          DIST="${{ github.workspace }}/UI/dist"
+          ls -la "$DIST"
+          test -f "$DIST/index.html"
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
