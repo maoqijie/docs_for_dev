@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { safeInvoke } from './tauri';
 
 // ==================== 类型定义 ====================
 
@@ -25,7 +25,7 @@ export interface Message {
  * @returns 新创建的会话对象
  */
 export async function createSession(title: string): Promise<Session> {
-    return await invoke('create_session', { title });
+    return await safeInvoke('create_session', { title });
 }
 
 /**
@@ -33,7 +33,7 @@ export async function createSession(title: string): Promise<Session> {
  * @returns 会话列表
  */
 export async function getSessions(): Promise<Session[]> {
-    return await invoke('get_sessions');
+    return await safeInvoke('get_sessions');
 }
 
 /**
@@ -41,7 +41,7 @@ export async function getSessions(): Promise<Session[]> {
  * @param sessionId 会话 ID
  */
 export async function deleteSession(sessionId: string): Promise<void> {
-    return await invoke('delete_session', { sessionId, session_id: sessionId });
+    return await safeInvoke('delete_session', { sessionId, session_id: sessionId });
 }
 
 /**
@@ -53,7 +53,7 @@ export async function updateSessionTitle(
     sessionId: string,
     title: string
 ): Promise<void> {
-    return await invoke('update_session_title', { sessionId, session_id: sessionId, title });
+    return await safeInvoke('update_session_title', { sessionId, session_id: sessionId, title });
 }
 
 // ==================== 消息管理 ====================
@@ -64,7 +64,7 @@ export async function updateSessionTitle(
  * @returns 消息列表
  */
 export async function getMessages(sessionId: string): Promise<Message[]> {
-    return await invoke('get_messages', { sessionId, session_id: sessionId });
+    return await safeInvoke('get_messages', { sessionId, session_id: sessionId });
 }
 
 /**
@@ -94,7 +94,7 @@ export async function sendMessage(
     try {
         // 调用后端命令
         // 兼容 Tauri 参数命名（部分环境要求 camelCase）
-        await invoke('send_message', {
+        await safeInvoke('send_message', {
             sessionId,
             session_id: sessionId,
             content,
@@ -127,7 +127,7 @@ export interface PickedDocument {
  */
 export async function pickDocuments(recursive: boolean = true): Promise<PickedDocument[]> {
     try {
-        return await invoke('pick_documents', { recursive });
+        return await safeInvoke('pick_documents', { recursive });
     } catch (error) {
         console.error('pick_documents 调用失败', error);
         return [];
@@ -139,7 +139,7 @@ export async function pickDocuments(recursive: boolean = true): Promise<PickedDo
  */
 export async function pickWorkdir(): Promise<string | null> {
     try {
-        const result = await invoke<string | null>('pick_workdir');
+        const result = await safeInvoke<string | null>('pick_workdir');
         return result ?? null;
     } catch (error) {
         console.error('pick_workdir 调用失败', error);
@@ -151,7 +151,7 @@ export async function pickWorkdir(): Promise<string | null> {
 
 export async function getSessionState(sessionId: string): Promise<string | null> {
     try {
-        const result = await invoke<string | null>('get_session_state', { sessionId });
+        const result = await safeInvoke<string | null>('get_session_state', { sessionId });
         return result ?? null;
     } catch (error) {
         console.error('get_session_state 调用失败', error);
@@ -161,7 +161,7 @@ export async function getSessionState(sessionId: string): Promise<string | null>
 
 export async function setSessionState(sessionId: string, state: string): Promise<void> {
     try {
-        await invoke('set_session_state', { sessionId, state });
+        await safeInvoke('set_session_state', { sessionId, state });
     } catch (error) {
         console.error('set_session_state 调用失败', error);
     }

@@ -7,6 +7,7 @@ import { ThemeProvider } from './components/ThemeProvider';
 import { Plus } from 'lucide-react';
 import { Button } from './components/ui/button';
 import { motion } from 'framer-motion';
+import { tauriNotReadyMessage } from './lib/tauri';
 
 const debugEnabled = false;
 const debugLog = (...args: unknown[]) => {
@@ -41,6 +42,14 @@ function App() {
     return stored || null;
   });
   const [showModePicker, setShowModePicker] = useState(() => mode === null);
+  const [bridgeError, setBridgeError] = useState<string | null>(null);
+
+  const handleBridgeError = (err: unknown) => {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes(tauriNotReadyMessage)) {
+      setBridgeError(`${tauriNotReadyMessage}，请重新启动或重新安装桌面客户端`);
+    }
+  };
 
   const persistSessionModes = (next: Record<string, 'doc-dev' | 'general'>) => {
     setSessionModes(next);
@@ -161,15 +170,19 @@ function App() {
       }
     } catch (error) {
       console.error('加载会话列表失败:', error);
+      handleBridgeError(error);
     }
   };
 
-  const handleNewSession = async (title?: string): Promise<Session | undefined> => {
+  const handleNewSession = async (title?: string, options?: { focus?: boolean }): Promise<Session | undefined> => {
     try {
       const defaultTitle = mode === 'doc-dev' ? '新任务' : '新对话';
       const session = await createSession(title || defaultTitle);
       setSessions((prev) => [session, ...prev]);
-      setCurrentSessionId(session.id);
+      const shouldFocus = options?.focus !== false;
+      if (shouldFocus) {
+        setCurrentSessionId(session.id);
+      }
       if (mode) {
         const next = { ...sessionModes, [session.id]: mode };
         persistSessionModes(next);
@@ -179,6 +192,7 @@ function App() {
       return session;
     } catch (error) {
       console.error('创建会话失败:', error);
+      handleBridgeError(error);
       return undefined;
     }
   };
@@ -224,6 +238,7 @@ function App() {
       loadSessions();
     } catch (error) {
       console.error('删除会话失败:', error);
+      handleBridgeError(error);
     }
   };
 
@@ -244,7 +259,14 @@ function App() {
 
   return (
     <ThemeProvider defaultTheme="dark" storageKey="codex-theme">
-      <div className="flex h-screen bg-background">
+      <div className="flex h-screen bg-background relative">
+        {bridgeError && (
+          <div className="absolute left-4 right-4 top-4 z-50">
+            <div className="rounded-xl border border-destructive/30 bg-destructive/10 text-destructive px-4 py-3 text-sm shadow-sm">
+              {bridgeError}
+            </div>
+          </div>
+        )}
         {showModePicker ? (
           // 仅显示模式选择页，隐藏侧边栏
           <div className="flex-1 flex items-center justify-center bg-gradient-to-b from-background to-muted/20 px-6">
@@ -305,6 +327,7 @@ function App() {
                 <TemplateEditor />
               ) : currentSessionId ? (
                 <ChatPanel
+                  key={currentSessionId}
                   sessionId={currentSessionId}
                   mode={mode || 'doc-dev'}
                   onModeBack={handleBackToModePicker}

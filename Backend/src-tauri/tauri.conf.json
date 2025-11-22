@@ -9,6 +9,7 @@
     "devUrl": "http://localhost:5173"
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
         "title": "Codex Chat",

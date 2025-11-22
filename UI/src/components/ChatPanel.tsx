@@ -3,6 +3,7 @@ import { type Message, type Session, getMessages, sendMessage, pickDocuments, pi
 import { MessageList } from './MessageList';
 import { InputBox } from './InputBox';
 import { motion } from 'framer-motion';
+import { isTauri, tauriNotReadyMessage } from '../lib/tauri';
 import {
     Select,
     SelectContent,
@@ -34,7 +35,7 @@ interface ChatPanelProps {
     sessionId: string;
     mode: 'doc-dev' | 'general';
     onModeBack: () => void;
-    onCreateSession?: (title?: string) => Promise<Session | undefined>;
+    onCreateSession?: (title?: string, options?: { focus?: boolean }) => Promise<Session | undefined>;
     onMarkSessionRoot?: (sessionId: string, rootId: string) => void;
     sessionRoots?: Record<string, string>;
 }
@@ -57,12 +58,6 @@ type AutomationConfig = {
     maxCycles: number;
     infiniteLoop: boolean;
     notifyText: string;
-};
-
-type AutomationQueue = {
-    targetSessionId: string;
-    cycle: number;
-    config: AutomationConfig;
 };
 
 type PersistedDocFile = {
@@ -89,6 +84,9 @@ type SessionUiState = {
     autoAbort: boolean;
     rootId: string;
     pendingPrefill?: string;
+    model?: string;
+    thinkingDepth?: string;
+    mode?: 'doc-dev' | 'general';
 };
 
 const defaultAutomationConfig = (): AutomationConfig => ({
@@ -119,6 +117,27 @@ const THINKING_LEVELS = [
     { id: 'medium', name: 'Medium Effort' },
     { id: 'high', name: 'High Effort' },
 ];
+
+const createDefaultSessionState = (rootId: string, mode: 'doc-dev' | 'general'): SessionUiState => ({
+    docBasePath: '',
+    docFiles: [],
+    autoConfig: defaultAutomationConfig(),
+    autoPromptLogs: [],
+    cycleLogs: {},
+    lastCycleMs: null,
+    sessionElapsedMs: 0,
+    rootElapsedMap: {},
+    autoStatus: '',
+    autoCycle: 1,
+    autoTargetSessionId: null,
+    autoRunning: false,
+    autoAbort: false,
+    rootId,
+    pendingPrefill: undefined,
+    model: MODELS[0].id,
+    thinkingDepth: 'low',
+    mode,
+});
 
 const formatBytes = (bytes: number) => {
     if (!bytes) return '0B';
@@ -173,7 +192,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
     const [stateVersion, setStateVersion] = useState(0);
     const [messages, setMessages] = useState<Message[]>([]);
     const [isLoading, setIsLoading] = useState(false);
-    const [isMessagesLoading, setIsMessagesLoading] = useState(true);
+    const [, setIsMessagesLoading] = useState(true);
     const [streamingContent, setStreamingContent] = useState('');
     const [model, setModel] = useState(MODELS[0].id);
     const [thinkingDepth, setThinkingDepth] = useState('low');
@@ -189,7 +208,6 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
     const [autoRunning, setAutoRunning] = useState(false);
     const [autoCycle, setAutoCycle] = useState(1);
     const [autoStatus, setAutoStatus] = useState('');
-    const [automationQueue, setAutomationQueue] = useState<AutomationQueue | null>(null);
     const [pendingPrefill, setPendingPrefill] = useState<string | undefined>(undefined);
     const [autoTargetSessionId, setAutoTargetSessionId] = useState<string | null>(null);
     const [autoAbort, setAutoAbort] = useState(false);
@@ -203,6 +221,52 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
     const resolveRootId = (id: string) => {
         if (!sessionRoots) return id;
         return sessionRoots[id] || id;
+    };
+
+    const ensureSessionState = (id: string): SessionUiState => {
+        const existing = sessionStateRef.current[id];
+        if (existing) return existing;
+        const created = createDefaultSessionState(resolveRootId(id), mode);
+        sessionStateRef.current[id] = created;
+        return created;
+    };
+
+    const syncStateToHooks = (id: string) => {
+        if (id !== sessionId) return;
+        const state = ensureSessionState(id);
+        setDocBasePath(state.docBasePath || '');
+        setDocFiles(
+            (state.docFiles || []).map((f) => ({
+                ...f,
+                content: '',
+            }))
+        );
+        setAutoConfig(state.autoConfig || defaultAutomationConfig());
+        setAutoPromptLogs(state.autoPromptLogs || []);
+        setCycleLogs(state.cycleLogs || {});
+        setLastCycleMs(state.lastCycleMs ?? null);
+        setSessionElapsedMs(state.sessionElapsedMs || 0);
+        setRootElapsedMap(state.rootElapsedMap || {});
+        setAutoStatus(state.autoStatus || '');
+        setAutoCycle(state.autoCycle || 1);
+        setAutoTargetSessionId(state.autoTargetSessionId || null);
+        setAutoRunning(state.autoRunning || false);
+        setAutoAbort(state.autoAbort || false);
+        setPendingPrefill(state.pendingPrefill);
+        setModel(state.model || MODELS[0].id);
+        setThinkingDepth(state.thinkingDepth || 'low');
+    };
+
+    const updateSessionStateEntry = (id: string, updater: (prev: SessionUiState) => SessionUiState) => {
+        const prev = ensureSessionState(id);
+        const next = updater(prev);
+        sessionStateRef.current[id] = next;
+        if (id === sessionId) {
+            syncStateToHooks(id);
+        }
+        setStateVersion((v) => v + 1);
+        void setSessionState(id, JSON.stringify(next)).catch((err) => console.error('保存会话状态失败', err));
+        return next;
     };
 
     const persistSessionState = async (id: string | null) => {
@@ -231,6 +295,9 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
             autoAbort,
             rootId,
             pendingPrefill,
+            model,
+            thinkingDepth,
+            mode,
         };
         sessionStateRef.current = all;
         setStateVersion((v) => v + 1);
@@ -267,71 +334,32 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
             setStateVersion((v) => v + 1);
         }
 
-        setDocBasePath(state.docBasePath || '');
-        setDocFiles(
-            (state.docFiles || []).map((f) => ({
-                ...f,
-                content: '',
-            }))
-        );
-        setAutoConfig(state.autoConfig || defaultAutomationConfig());
-        setAutoPromptLogs(state.autoPromptLogs || []);
-        setCycleLogs(state.cycleLogs || {});
-        setLastCycleMs(state.lastCycleMs ?? null);
-        setSessionElapsedMs(state.sessionElapsedMs || 0);
-        setRootElapsedMap(state.rootElapsedMap || {});
-        setAutoStatus(state.autoStatus || '');
-        setAutoCycle(state.autoCycle || 1);
-        setAutoTargetSessionId(state.autoTargetSessionId || null);
-        setAutoRunning(state.autoRunning || false);
-        setAutoAbort(state.autoAbort || false);
-        setPendingPrefill(state.pendingPrefill);
+        // 切换/启动时禁止继承自动执行的运行态，防止开屏就显示“生成中”
+        state = {
+            ...state,
+            autoRunning: false,
+            autoStatus: '',
+            autoTargetSessionId: null,
+        };
+        sessionStateRef.current[id] = state;
+        syncStateToHooks(id);
+        setIsLoading(false);
+        setIsMessagesLoading(false);
+        setStreamingContent('');
         return true;
-    };
-
-    const warmRootStates = async () => {
-        if (!sessionRoots) return;
-        const rootId = resolveRootId(sessionId);
-        const relatedIds = Object.keys(sessionRoots).filter((sid) => resolveRootId(sid) === rootId);
-        if (!relatedIds.includes(sessionId)) relatedIds.push(sessionId);
-
-        for (const sid of relatedIds) {
-            if (sessionStateRef.current[sid]) continue;
-            const remote = await getSessionState(sid);
-            if (remote) {
-                try {
-                    const parsed = JSON.parse(remote) as SessionUiState;
-                    sessionStateRef.current[sid] = parsed;
-                    setStateVersion((v) => v + 1);
-                } catch (err) {
-                    console.error('解析会话状态失败', err);
-                }
-            }
-        }
     };
 
     useEffect(() => {
         let cancelled = false;
         (async () => {
-            const prevRootId = prevSessionIdRef.current ? resolveRootId(prevSessionIdRef.current) : null;
-            const currentRootId = resolveRootId(sessionId);
-
             // 保存上一个会话的前端状态
             await persistSessionState(prevSessionIdRef.current);
-
-            // 不同任务根切换时，清空内存状态，避免跨任务串台
-            if (prevRootId && prevRootId !== currentRootId) {
-                sessionStateRef.current = {};
-                setStateVersion((v) => v + 1);
-            }
 
             // 切换会话时禁用自动运行并清理运行时状态
             setStreamingContent('');
             setError(null);
             setIsLoading(false);
             setIsMessagesLoading(true);
-            setAutomationQueue(null);
-
             const restored = await restoreSessionState(sessionId);
             if (!restored) {
                 if (cancelled) return;
@@ -368,6 +396,15 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
     }, [docBasePath]);
 
     useEffect(() => {
+        updateSessionStateEntry(sessionId, (prev) => ({
+            ...prev,
+            model,
+            thinkingDepth,
+            mode,
+        }));
+    }, [sessionId, model, thinkingDepth, mode]);
+
+    useEffect(() => {
         void persistSessionState(sessionId);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [
@@ -396,37 +433,25 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
     }, []);
 
     const aggregatedPromptLogs = useMemo(() => {
-        const currentRoot = resolveRootId(sessionId);
-        const logs: { sessionId: string; text: string }[] = [];
-        Object.entries(sessionStateRef.current).forEach(([sid, st]) => {
-            const stRoot = st?.rootId || resolveRootId(sid);
-            if (stRoot !== currentRoot) return;
-            (st.autoPromptLogs || []).forEach((text) => logs.push({ sessionId: sid, text }));
-        });
-        return logs;
+        const st = sessionStateRef.current[sessionId];
+        if (!st?.autoPromptLogs) return [];
+        return st.autoPromptLogs.map((text) => ({ sessionId, text }));
     }, [sessionId, stateVersion]);
 
     const aggregatedCycleLogs = useMemo(() => {
-        const currentRoot = resolveRootId(sessionId);
+        const st = sessionStateRef.current[sessionId];
+        if (!st?.cycleLogs) return [];
         const result: { sessionId: string; cycleId: string; logs: string[] }[] = [];
-        Object.entries(sessionStateRef.current).forEach(([sid, st]) => {
-            const stRoot = st?.rootId || resolveRootId(sid);
-            if (stRoot !== currentRoot) return;
-            Object.entries(st.cycleLogs || {}).forEach(([cycleId, logs]) => {
-                result.push({ sessionId: sid, cycleId, logs });
-            });
+        Object.entries(st.cycleLogs).forEach(([cycleId, logs]) => {
+            result.push({ sessionId, cycleId, logs });
         });
-        // 最新的 cycleId 优先，其次按 sessionId
-        return result.sort((a, b) => Number(b.cycleId) - Number(a.cycleId) || a.sessionId.localeCompare(b.sessionId));
+        return result.sort((a, b) => Number(b.cycleId) - Number(a.cycleId));
     }, [sessionId, stateVersion]);
 
-    useEffect(() => {
-        if (automationQueue) {
-            runAutomationCycle(automationQueue.cycle, automationQueue.config);
-            setAutomationQueue(null);
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [automationQueue]);
+    const warmRootStates = async () => {
+        // 预留钩子：可在此填充根会话用时等缓存，当前为空实现避免阻塞
+        return;
+    };
 
     const loadMessages = async (): Promise<Message[]> => {
         setIsMessagesLoading(true);
@@ -466,11 +491,14 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
     };
 
     const sendContent = async (
+        ownerId: string,
+        targetOverride: string | undefined,
         content: string,
-        targetOverride?: string,
         skipUiInjection = false,
     ): Promise<Message | null> => {
-        const targetSession = targetOverride || sessionId;
+        const state = ensureSessionState(ownerId);
+        const targetSession = targetOverride || ownerId;
+        const isActive = targetSession === sessionId;
         const userMessage: Message = {
             id: Date.now(),
             session_id: targetSession,
@@ -478,28 +506,37 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
             content,
             timestamp: new Date().toISOString(),
         };
-        if (!skipUiInjection && targetSession === sessionId) {
+        if (!skipUiInjection && isActive) {
             setMessages((prev) => [...prev, userMessage]);
         }
-        setIsLoading(true);
-        setStreamingContent('');
-        setError(null);
-        setIsMessagesLoading(true);
+        if (isActive) {
+            setIsLoading(true);
+            setStreamingContent('');
+            setError(null);
+            setIsMessagesLoading(true);
+        }
 
         try {
             const finalContent =
-                mode === 'doc-dev'
+                state.mode === 'doc-dev'
                     ? `【文档开发模式】请针对文档/开发相关需求输出结构化、可执行的步骤与示例。\n${content}`
                     : content;
 
-            await sendMessage(targetSession, finalContent, model, thinkingDepth, (chunk) => {
-                if (!skipUiInjection && targetSession === sessionId) {
-                    setStreamingContent((prev) => prev + chunk);
-                }
-            }, mode === 'doc-dev' ? docBasePath : undefined);
+            await sendMessage(
+                targetSession,
+                finalContent,
+                state.model || model,
+                state.thinkingDepth || thinkingDepth,
+                (chunk) => {
+                    if (!skipUiInjection && isActive) {
+                        setStreamingContent((prev) => prev + chunk);
+                    }
+                },
+                state.mode === 'doc-dev' ? state.docBasePath : undefined,
+            );
 
             const updated = await getMessages(targetSession);
-            if (!skipUiInjection && targetSession === sessionId) {
+            if (!skipUiInjection && isActive) {
                 setMessages(updated);
                 setStreamingContent('');
             }
@@ -507,45 +544,54 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
             return lastAssistant;
         } catch (err) {
             console.error('发送消息失败:', err);
-            setError(err instanceof Error ? err.message : String(err));
+            if (isActive) {
+                setError(err instanceof Error ? err.message : String(err));
+            }
             return null;
         } finally {
-            setIsLoading(false);
-            setIsMessagesLoading(false);
+            if (isActive) {
+                setIsLoading(false);
+                setIsMessagesLoading(false);
+            }
         }
     };
 
-    const appendLog = (text: string, cycleId: number = autoCycle) => {
+    const appendLog = (ownerId: string, text: string, cycleId?: number) => {
         const entry = text.trim();
         if (!entry) return;
-        setCycleLogs((prev) => {
-            const current = prev[cycleId] || [];
-            const next = [entry, ...current].slice(0, 200);
-            return { ...prev, [cycleId]: next };
+        updateSessionStateEntry(ownerId, (prev) => {
+            const cid = cycleId ?? prev.autoCycle;
+            const current = prev.cycleLogs[cid] || [];
+            const nextLogs = [entry, ...current].slice(0, 200);
+            return { ...prev, cycleLogs: { ...prev.cycleLogs, [cid]: nextLogs } };
         });
     };
 
-    const recordElapsed = (elapsed: number) => {
-        setLastCycleMs(elapsed);
-        setSessionElapsedMs((prev) => prev + elapsed);
-        const root = resolveRootId(autoTargetSessionId || sessionId);
-        setRootElapsedMap((prev) => {
-            const nextTotal = (prev[root] || 0) + elapsed;
-            return { ...prev, [root]: nextTotal };
+    const recordElapsed = (ownerId: string, elapsed: number) => {
+        updateSessionStateEntry(ownerId, (prev) => {
+            const root = resolveRootId(prev.autoTargetSessionId || ownerId);
+            const nextRootElapsed = { ...prev.rootElapsedMap, [root]: (prev.rootElapsedMap[root] || 0) + elapsed };
+            return {
+                ...prev,
+                lastCycleMs: elapsed,
+                sessionElapsedMs: (prev.sessionElapsedMs || 0) + elapsed,
+                rootElapsedMap: nextRootElapsed,
+            };
         });
     };
 
-    const appendPromptLog = (text: string, cycleId: number = autoCycle) => {
+    const appendPromptLog = (ownerId: string, text: string, cycleId?: number) => {
         const entry = text.trim();
         if (!entry) return;
-        setAutoPromptLogs((prev) => {
-            const next = [`【提示】${entry}`, ...prev].slice(0, 200);
-            return next;
+        updateSessionStateEntry(ownerId, (prev) => {
+            const cid = cycleId ?? prev.autoCycle;
+            const next = [`【第 ${cid} 轮提示】${entry}`, ...prev.autoPromptLogs].slice(0, 200);
+            return { ...prev, autoPromptLogs: next };
         });
     };
 
     const handleSend = async (content: string) => {
-        await sendContent(content);
+        await sendContent(sessionId, sessionId, content);
     };
 
     // 浏览器 file input 仅作兜底；无法拿到绝对路径，只保留文件名和相对路径
@@ -575,29 +621,11 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         setIsPickingDocs(false);
     };
 
-    const inferCommonDir = (paths: string[]): string => {
-        if (paths.length === 0) return '';
-        const splitPaths = paths.map((p) => p.split(/[\\/]+/).filter(Boolean));
-        const minLen = Math.min(...splitPaths.map((arr) => arr.length));
-        const common: string[] = [];
-        for (let i = 0; i < minLen; i++) {
-            const segment = splitPaths[0][i];
-            if (splitPaths.every((arr) => arr[i] === segment)) {
-                common.push(segment);
-            } else {
-                break;
-            }
-        }
-        return common.length ? common.join('/') : '';
-    };
-
     const handlePickDocsNative = async () => {
         setIsPickingDocs(true);
         try {
             const picked = await pickDocuments(true);
             if (!picked.length) return;
-
-            const absPaths = picked.map((p) => p.path);
 
             setDocFiles((prev) => {
                 const merged = [...prev];
@@ -632,12 +660,23 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
     };
 
     const buildPromptWithDocs = (
+        state: SessionUiState,
         template: string,
         includeCompletionHint = true,
-        customConfig: AutomationConfig = autoConfig,
+        customConfig: AutomationConfig = state.autoConfig,
     ) => {
-        const docBlock = buildDocBlock(docFiles, docBasePath);
-        const workdir = docBasePath?.trim() || './';
+        const docBlock = buildDocBlock(
+            state.docFiles.map((f) => ({
+                path: f.path,
+                name: f.name,
+                size: f.size,
+                relativePath: f.relativePath,
+                absPath: f.absPath,
+                content: '',
+            })),
+            state.docBasePath,
+        );
+        const workdir = state.docBasePath?.trim() || './';
         const workdirHint = `工作目录: ${workdir}（若包含 ~ 请先展开为绝对路径）\n所有文件操作必须在该目录下，使用文档提供的相对路径。`;
         const fixDirective = [
             '若发现实现与文档不符，必须直接修改/创建文件完成修复，不要只给检查结论。',
@@ -655,139 +694,216 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         }
 
         const prompt = `${workdirHint}\n${fixDirective}\n\n${promptBody}`;
-        appendPromptLog(prompt, autoCycle);
+        appendPromptLog(sessionId, prompt);
         return prompt;
     };
 
     const handlePrefillToInput = () => {
-        setPendingPrefill(buildPromptWithDocs(autoConfig.taskPrompt));
+        const st = ensureSessionState(sessionId);
+        const prompt = buildPromptWithDocs(st, st.autoConfig.taskPrompt);
+        setPendingPrefill(prompt);
+        updateSessionStateEntry(sessionId, (prev) => ({ ...prev, pendingPrefill: prompt }));
     };
 
-    const startAutomation = async (cycle = 1) => {
-        const config = autoConfig;
-        setAutoAbort(false);
-        // 若要求每轮新会话，先创建后切换再排队执行
-        if (config.newSessionEachLoop || config.autoRestartSession) {
-            if (onCreateSession) {
-                setAutoStatus(`创建新会话用于第 ${cycle} 轮…`);
-                const newSession = await onCreateSession(`文档自动循环 ${cycle}`);
-                if (newSession) {
-                    if (onMarkSessionRoot) {
-                        const root = resolveRootId(sessionId);
-                        onMarkSessionRoot(newSession.id, root);
+    const startAutomation = async (cycle = 1, ownerId: string = sessionId) => {
+        if (!isTauri()) {
+            setError(tauriNotReadyMessage);
+            updateSessionStateEntry(ownerId, (prev) => ({
+                ...prev,
+                autoStatus: '自动执行失败：未检测到桌面客户端，请用 start_dev.sh 或安装最新版桌面端',
+                autoRunning: false,
+            }));
+            appendLog(ownerId, '自动执行失败：缺少桌面内核，无法调用本地指令');
+            return;
+        }
+        const state = ensureSessionState(ownerId);
+        const config = state.autoConfig;
+        updateSessionStateEntry(ownerId, (prev) => ({
+            ...prev,
+            autoAbort: false,
+            model,
+            thinkingDepth,
+            mode,
+            autoCycle: cycle,
+        }));
+        try {
+            // 若要求每轮新会话，先创建后切换再排队执行
+            if (config.newSessionEachLoop || config.autoRestartSession) {
+                if (onCreateSession) {
+                    updateSessionStateEntry(ownerId, (prev) => ({
+                        ...prev,
+                        autoStatus: `创建新会话用于第 ${cycle} 轮…`,
+                    }));
+                    const newSession = await onCreateSession(`文档自动循环 ${cycle}`, { focus: false });
+                    if (newSession) {
+                        if (onMarkSessionRoot) {
+                            const root = resolveRootId(sessionId);
+                            onMarkSessionRoot(newSession.id, root);
+                        }
+                        updateSessionStateEntry(ownerId, (prev) => ({
+                            ...prev,
+                            autoTargetSessionId: newSession.id,
+                        }));
+                        await runAutomationCycle(ownerId, cycle, config);
+                        return;
                     }
-                    setAutoTargetSessionId(newSession.id);
-                    setAutomationQueue({ targetSessionId: newSession.id, cycle, config });
-                    return;
                 }
             }
+
+            // 否则直接在当前会话执行
+            updateSessionStateEntry(ownerId, (prev) => ({
+                ...prev,
+                autoTargetSessionId: sessionId,
+            }));
+            await runAutomationCycle(ownerId, cycle, config);
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            setError(msg);
+            updateSessionStateEntry(ownerId, (prev) => ({
+                ...prev,
+                autoStatus: `自动执行失败：${msg}`,
+                autoRunning: false,
+            }));
+            appendLog(ownerId, `自动执行失败：${msg}`);
         }
-
-        // 否则直接在当前会话执行
-        setAutoTargetSessionId(sessionId);
-        setAutomationQueue({ targetSessionId: sessionId, cycle, config });
     };
 
-    const handleStopAutomation = () => {
-        setAutoAbort(true);
-        setAutomationQueue(null);
-        setAutoRunning(false);
-        setAutoTargetSessionId(null);
-        setAutoStatus('已手动停止，后续不再发送请求');
-        setIsLoading(false);
-        setIsMessagesLoading(false);
-        setStreamingContent('');
-        appendLog('任务已手动停止，后续不再发送请求。');
-        setLastCycleMs(null);
+    const handleStopAutomation = (ownerId: string = sessionId) => {
+        updateSessionStateEntry(ownerId, (prev) => ({
+            ...prev,
+            autoAbort: true,
+            autoRunning: false,
+            autoTargetSessionId: null,
+            autoStatus: '已手动停止，后续不再发送请求',
+        }));
+        if (ownerId === sessionId) {
+            setIsLoading(false);
+            setIsMessagesLoading(false);
+            setStreamingContent('');
+        }
+        appendLog(ownerId, '任务已手动停止，后续不再发送请求。');
+        updateSessionStateEntry(ownerId, (prev) => ({ ...prev, lastCycleMs: null }));
     };
 
-    const handleAutomationSuccess = (config: AutomationConfig, cycle: number) => {
-        setAutoStatus(`检测到完成标记「${config.completionSignal}」，在第 ${cycle} 轮完成。`);
-        setAutoRunning(false);
+    const handleAutomationSuccess = (ownerId: string, config: AutomationConfig, cycle: number) => {
+        updateSessionStateEntry(ownerId, (prev) => ({
+            ...prev,
+            autoStatus: `检测到完成标记「${config.completionSignal}」，在第 ${cycle} 轮完成。`,
+            autoRunning: false,
+            autoTargetSessionId: null,
+        }));
         notifyCompletion(config.notifyText || '文档开发任务已完成');
-        appendLog(`第 ${cycle} 轮：已完成，输出包含标记「${config.completionSignal}」`, cycle);
-        setAutoTargetSessionId(null);
+        appendLog(ownerId, `第 ${cycle} 轮：已完成，输出包含标记「${config.completionSignal}」`, cycle);
     };
 
-    const handleAutomationFailure = async (config: AutomationConfig, cycle: number) => {
+    const handleAutomationFailure = async (ownerId: string, config: AutomationConfig, cycle: number) => {
         const shouldContinue = config.autoRestartSession && (config.infiniteLoop || config.maxCycles > cycle);
         if (shouldContinue && onCreateSession) {
             const next = cycle + 1;
             const label = config.infiniteLoop ? `第 ${next} 轮` : `(${next}/${config.maxCycles})`;
-            setAutoStatus(`第 ${cycle} 轮未完成，准备新建会话继续 ${label}`);
-            const newSession = await onCreateSession(`文档自动循环 ${next}`);
+            updateSessionStateEntry(ownerId, (prev) => ({
+                ...prev,
+                autoStatus: `第 ${cycle} 轮未完成，准备新建会话继续 ${label}`,
+            }));
+            const newSession = await onCreateSession(`文档自动循环 ${next}`, { focus: false });
             if (newSession) {
                 if (onMarkSessionRoot) {
-                    const root = resolveRootId(sessionId);
+                    const root = resolveRootId(ownerId);
                     onMarkSessionRoot(newSession.id, root);
                 }
-                setAutoTargetSessionId(newSession.id);
-                setAutomationQueue({ targetSessionId: newSession.id, cycle: next, config });
-                setAutoRunning(false);
+                updateSessionStateEntry(ownerId, (prev) => ({
+                    ...prev,
+                    autoTargetSessionId: newSession.id,
+                    autoRunning: false,
+                }));
+                await runAutomationCycle(ownerId, next, config);
                 return;
             }
         }
-        setAutoStatus('未检测到完成标记，自动循环已停止');
-        setAutoRunning(false);
-        appendLog(`第 ${cycle} 轮：未完成，循环结束`, cycle);
+        updateSessionStateEntry(ownerId, (prev) => ({
+            ...prev,
+            autoStatus: '未检测到完成标记，自动循环已停止',
+            autoRunning: false,
+            autoTargetSessionId: null,
+        }));
+        appendLog(ownerId, `第 ${cycle} 轮：未完成，循环结束`, cycle);
     };
 
-    const runAutomationCycle = async (cycle = 1, configOverride?: AutomationConfig) => {
-        if (!sessionId || isLoading) return;
-        const config = configOverride || autoConfig;
-        if (autoAbort) {
-            setAutoRunning(false);
-            setAutoStatus('已停止');
+    const runAutomationCycle = async (ownerId: string, cycle = 1, configOverride?: AutomationConfig) => {
+        const state = ensureSessionState(ownerId);
+        const config = configOverride || state.autoConfig;
+        if (state.autoAbort) {
+            updateSessionStateEntry(ownerId, (prev) => ({ ...prev, autoRunning: false, autoStatus: '已停止' }));
             return;
         }
-        setAutoRunning(true);
-        setAutoCycle(cycle);
-        setAutoStatus(`第 ${cycle} 轮：发送主查询…`);
-        appendLog(`第 ${cycle} 轮：开始执行`);
+        updateSessionStateEntry(ownerId, (prev) => ({
+            ...prev,
+            autoRunning: true,
+            autoCycle: cycle,
+            autoStatus: `第 ${cycle} 轮：发送主查询…`,
+        }));
+        appendLog(ownerId, `第 ${cycle} 轮：开始执行`, cycle);
 
         try {
-            const target = autoTargetSessionId || sessionId;
+            const target = state.autoTargetSessionId || ownerId;
             const startedAt = Date.now();
-            const firstReply = await sendContent(buildPromptWithDocs(config.taskPrompt, true, config), target, true);
+            const firstReply = await sendContent(
+                ownerId,
+                target,
+                buildPromptWithDocs(state, config.taskPrompt, true, config),
+                true,
+            );
             if (firstReply?.content) {
-                appendLog(`第 ${cycle} 轮主查询回复：${firstReply.content}`, cycle);
+                appendLog(ownerId, `第 ${cycle} 轮主查询回复：${firstReply.content}`, cycle);
             }
-            if (autoAbort) {
-                setAutoRunning(false);
-                setAutoStatus('已停止');
-                appendLog(`第 ${cycle} 轮：手动停止，已终止后续请求。`);
-                recordElapsed(Date.now() - startedAt);
+            const currentState = ensureSessionState(ownerId);
+            if (currentState.autoAbort) {
+                updateSessionStateEntry(ownerId, (prev) => ({ ...prev, autoRunning: false, autoStatus: '已停止' }));
+                appendLog(ownerId, `第 ${cycle} 轮：手动停止，已终止后续请求。`, cycle);
+                recordElapsed(ownerId, Date.now() - startedAt);
                 return;
             }
             if (messageHasCompletion(firstReply, config.completionSignal)) {
-                recordElapsed(Date.now() - startedAt);
-                handleAutomationSuccess(config, cycle);
+                recordElapsed(ownerId, Date.now() - startedAt);
+                handleAutomationSuccess(ownerId, config, cycle);
                 return;
             }
 
             if (config.nextStep.trim()) {
-                setAutoStatus('未检测到标记，发送下一步指令…');
-                const followReply = await sendContent(buildPromptWithDocs(config.nextStep, true, config), target, true);
+                updateSessionStateEntry(ownerId, (prev) => ({
+                    ...prev,
+                    autoStatus: '未检测到标记，发送下一步指令…',
+                }));
+                const followReply = await sendContent(
+                    ownerId,
+                    target,
+                    buildPromptWithDocs(state, config.nextStep, true, config),
+                    true,
+                );
                 if (followReply?.content) {
-                    appendLog(`第 ${cycle} 轮补充查询回复：${followReply.content}`, cycle);
+                    appendLog(ownerId, `第 ${cycle} 轮补充查询回复：${followReply.content}`, cycle);
                 }
-                if (autoAbort) {
-                    setAutoRunning(false);
-                    setAutoStatus('已停止');
-                    appendLog(`第 ${cycle} 轮：手动停止，已终止后续请求。`);
-                    recordElapsed(Date.now() - startedAt);
+                const latest = ensureSessionState(ownerId);
+                if (latest.autoAbort) {
+                    updateSessionStateEntry(ownerId, (prev) => ({ ...prev, autoRunning: false, autoStatus: '已停止' }));
+                    appendLog(ownerId, `第 ${cycle} 轮：手动停止，已终止后续请求。`, cycle);
+                    recordElapsed(ownerId, Date.now() - startedAt);
                     return;
                 }
-                // 修复阶段输出的完成标记不采纳，需下一轮检查阶段确认
             }
 
-            recordElapsed(Date.now() - startedAt);
-            await handleAutomationFailure(config, cycle);
+            recordElapsed(ownerId, Date.now() - startedAt);
+            await handleAutomationFailure(ownerId, config, cycle);
         } catch (err) {
             console.error('自动执行失败:', err);
-            setError(err instanceof Error ? err.message : String(err));
-            setAutoStatus('自动执行失败，请重试');
-            setAutoRunning(false);
+            const msg = err instanceof Error ? err.message : String(err);
+            setError(msg);
+            updateSessionStateEntry(ownerId, (prev) => ({
+                ...prev,
+                autoStatus: `自动执行失败：${msg}`,
+                autoRunning: false,
+            }));
+            appendLog(ownerId, `自动执行失败：${msg}`, cycle);
         }
     };
 
@@ -795,7 +911,8 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         ? [...THINKING_LEVELS, { id: 'xhigh', name: 'Extra High Effort' }]
         : THINKING_LEVELS;
 
-    const showTopLoader = isMessagesLoading || isLoading || !!streamingContent;
+    // 仅在主动发送/流式时显示顶部加载，不因历史加载闪烁
+    const showTopLoader = isLoading || !!streamingContent;
 
     return (
         <motion.div
@@ -1108,8 +1225,8 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                                             variant="destructive"
                                             size="sm"
                                             className="rounded-full"
-                                            onClick={handleStopAutomation}
-                                            disabled={!autoRunning && !automationQueue}
+                                            onClick={() => handleStopAutomation()}
+                                            disabled={!autoRunning}
                                         >
                                             立即停止
                                         </Button>
@@ -1218,7 +1335,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
             <MessageList
                 messages={messages}
                 streamingContent={streamingContent}
-                isLoading={isMessagesLoading || isLoading}
+                isLoading={isLoading}
             />
             {error && (
                 <div className="px-6 pb-2 text-sm text-red-500">

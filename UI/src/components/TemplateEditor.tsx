@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { safeInvoke } from '../lib/tauri';
 import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
 import { Card } from './ui/card';
@@ -32,7 +32,7 @@ export function TemplateEditor() {
 
   const loadTemplates = async () => {
     try {
-      const result = await invoke<PromptTemplate[]>('list_templates');
+      const result = await safeInvoke<PromptTemplate[]>('list_templates');
       setTemplates(result);
       if (result.length > 0 && !selectedTemplate) {
         setSelectedTemplate(result[0].name);
@@ -51,7 +51,7 @@ export function TemplateEditor() {
 
   const loadTemplate = async (name: string) => {
     try {
-      const template = await invoke<PromptTemplate>('get_template', { name });
+      const template = await safeInvoke<PromptTemplate>('get_template', { name });
       setCurrentContent(template.content);
     } catch (error) {
       showMessage('error', `加载模板内容失败: ${error}`);
@@ -66,7 +66,7 @@ export function TemplateEditor() {
 
     setIsSaving(true);
     try {
-      await invoke('update_template', {
+      await safeInvoke('update_template', {
         name: selectedTemplate,
         content: currentContent,
       });

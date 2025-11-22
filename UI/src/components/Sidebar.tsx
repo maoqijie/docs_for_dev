@@ -13,7 +13,7 @@ interface SidebarProps {
     sessions: Session[];
     currentSessionId: string | null;
     onSessionSelect: (id: string) => void;
-    onNewSession: (title?: string) => Promise<Session | undefined> | void;
+    onNewSession: (title?: string, options?: { focus?: boolean }) => Promise<Session | undefined> | void;
     onDeleteSession: (id: string) => void;
     onRenameSession: (id: string, title: string) => void;
     mode: 'doc-dev' | 'general';

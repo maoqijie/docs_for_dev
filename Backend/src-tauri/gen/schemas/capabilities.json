@@ -1,1 +1,1 @@
-{"default":{"identifier":"default","description":"Default capability with event listen permission for chat streaming","local":true,"windows":["*"],"webviews":["*"],"permissions":["core:default","core:event:allow-listen","core:event:default"]}}
+{}
