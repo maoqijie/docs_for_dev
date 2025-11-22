@@ -32,31 +32,44 @@ impl PromptTemplateManager {
     fn load_templates(&mut self) -> anyhow::Result<()> {
         if !self.templates_dir.exists() {
             fs::create_dir_all(&self.templates_dir)?;
-            // 创建默认的文档驱动开发模板
-            self.create_default_doc_driven_template()?;
         }
+        self.ensure_default_templates()?;
+
+        let mut ext_priority: HashMap<String, u8> = HashMap::new();
 
         for entry in fs::read_dir(&self.templates_dir)? {
             let entry = entry?;
             let path = entry.path();
 
-            if path.extension().and_then(|s| s.to_str()) == Some("txt") {
-                let name = path
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("unknown")
-                    .replace(".template", "");
+            let ext = path.extension().and_then(|s| s.to_str());
+            let priority = match ext.and_then(extension_priority) {
+                Some(p) => p,
+                None => continue,
+            };
 
-                let content = fs::read_to_string(&path)?;
-                let variables = extract_variables(&content);
+            let name = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("unknown")
+                .replace(".template", "");
 
-                let template = PromptTemplate {
-                    name: name.clone(),
-                    content,
-                    variables,
-                    description: format!("{} 提示词模板", name),
-                };
+            let content = fs::read_to_string(&path)?;
+            let variables = extract_variables(&content);
+            let template = PromptTemplate {
+                name: name.clone(),
+                content,
+                variables,
+                description: default_description(&name),
+            };
 
+            // 同名模板优先保留更高优先级（md > txt）
+            let should_replace = match ext_priority.get(&name) {
+                Some(prev) => priority >= *prev,
+                None => true,
+            };
+
+            if should_replace {
+                ext_priority.insert(name.clone(), priority);
                 self.templates.insert(name, template);
             }
         }
@@ -64,11 +77,24 @@ impl PromptTemplateManager {
         Ok(())
     }
 
-    /// 创建默认的文档驱动开发模板
-    fn create_default_doc_driven_template(&self) -> anyhow::Result<()> {
-        let template_path = self.templates_dir.join("doc-driven-dev.template.txt");
-        let default_content = include_str!("../prompts/doc-driven-dev.template.txt");
-        fs::write(template_path, default_content)?;
+    /// 写入默认模板（缺失时补充，不覆盖用户修改）
+    fn ensure_default_templates(&self) -> anyhow::Result<()> {
+        let defaults = vec![
+            (
+                "doc-driven-dev.template.txt",
+                include_str!("../prompts/doc-driven-dev.template.txt"),
+            ),
+            ("check.md", include_str!("../prompts/check.md")),
+            ("do.md", include_str!("../prompts/do.md")),
+        ];
+
+        for (filename, content) in defaults {
+            let path = self.templates_dir.join(filename);
+            if !path.exists() {
+                fs::write(path, content)?;
+            }
+        }
+
         Ok(())
     }
 
@@ -105,7 +131,7 @@ impl PromptTemplateManager {
 
     /// 更新模板内容
     pub fn update_template(&mut self, name: &str, content: String) -> anyhow::Result<()> {
-        let template_path = self.templates_dir.join(format!("{}.template.txt", name));
+        let template_path = self.resolve_template_path(name);
         fs::write(&template_path, &content)?;
 
         // 重新加载模板
@@ -119,7 +145,7 @@ impl PromptTemplateManager {
                 .templates
                 .get(name)
                 .map(|t| t.description.clone())
-                .unwrap_or_else(|| format!("{} 提示词模板", name)),
+                .unwrap_or_else(|| default_description(name)),
         };
 
         self.templates.insert(name.to_string(), template);
@@ -133,12 +159,11 @@ impl PromptTemplateManager {
         content: String,
         description: String,
     ) -> anyhow::Result<()> {
-        let template_path = self.templates_dir.join(format!("{}.template.txt", name));
-
-        if template_path.exists() {
+        if self.template_exists(name) {
             return Err(anyhow::anyhow!("模板已存在: {}", name));
         }
 
+        let template_path = self.templates_dir.join(format!("{}.md", name));
         fs::write(&template_path, &content)?;
 
         let variables = extract_variables(&content);
@@ -155,7 +180,7 @@ impl PromptTemplateManager {
 
     /// 删除模板
     pub fn delete_template(&mut self, name: &str) -> anyhow::Result<()> {
-        let template_path = self.templates_dir.join(format!("{}.template.txt", name));
+        let template_path = self.resolve_template_path(name);
 
         if !template_path.exists() {
             return Err(anyhow::anyhow!("模板不存在: {}", name));
@@ -168,7 +193,7 @@ impl PromptTemplateManager {
 
     /// 获取模板文件路径（用于用户手动编辑）
     pub fn get_template_path(&self, name: &str) -> PathBuf {
-        self.templates_dir.join(format!("{}.template.txt", name))
+        self.resolve_template_path(name)
     }
 }
 
@@ -210,6 +235,52 @@ fn extract_variables(content: &str) -> Vec<String> {
     }
 
     variables
+}
+
+/// 根据扩展名定义加载优先级（md > txt）
+fn extension_priority(ext: &str) -> Option<u8> {
+    match ext {
+        "md" => Some(2),
+        "txt" => Some(1),
+        _ => None,
+    }
+}
+
+/// 为常见模板名设置默认描述
+fn default_description(name: &str) -> String {
+    match name {
+        "check" => "文档驱动-检查阶段提示词".to_string(),
+        "do" => "文档驱动-落地阶段提示词".to_string(),
+        "doc-driven-dev" => "文档驱动一体化模板".to_string(),
+        _ => format!("{} 提示词模板", name),
+    }
+}
+
+/// 生成常用候选路径，优先 md
+fn candidate_template_paths(base: &PathBuf, name: &str) -> Vec<PathBuf> {
+    vec![
+        base.join(format!("{}.md", name)),
+        base.join(format!("{}.template.md", name)),
+        base.join(format!("{}.txt", name)),
+        base.join(format!("{}.template.txt", name)),
+    ]
+}
+
+impl PromptTemplateManager {
+    fn resolve_template_path(&self, name: &str) -> PathBuf {
+        for path in candidate_template_paths(&self.templates_dir, name) {
+            if path.exists() {
+                return path;
+            }
+        }
+        self.templates_dir.join(format!("{}.md", name))
+    }
+
+    fn template_exists(&self, name: &str) -> bool {
+        candidate_template_paths(&self.templates_dir, name)
+            .into_iter()
+            .any(|p| p.exists())
+    }
 }
 
 #[cfg(test)]

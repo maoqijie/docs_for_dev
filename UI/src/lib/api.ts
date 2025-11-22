@@ -92,6 +92,7 @@ export async function sendMessage(
     workingDir?: string
 ): Promise<void> {
     try {
+        const normalizedWorkdir = workingDir?.trim() || undefined;
         // 调用后端命令
         // 兼容 Tauri 参数命名（部分环境要求 camelCase）
         await safeInvoke('send_message', {
@@ -100,7 +101,8 @@ export async function sendMessage(
             content,
             model,
             thinking_depth: thinkingDepth,
-            working_dir: workingDir,
+            working_dir: normalizedWorkdir,
+            workingDir: normalizedWorkdir,
         });
 
         // 若需要流式展示，可在此扩展（当前后端已写入 DB，前端后续 reload）
@@ -165,4 +167,10 @@ export async function setSessionState(sessionId: string, state: string): Promise
     } catch (error) {
         console.error('set_session_state 调用失败', error);
     }
+}
+
+// ==================== 提示模板 ====================
+
+export async function renderTemplate(name: string, variables: Record<string, string>): Promise<string> {
+    return await safeInvoke('render_template', { name, variables });
 }

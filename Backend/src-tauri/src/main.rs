@@ -3,7 +3,9 @@
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use codex_chat_lib::{api::CodexClient, commands, db::DbManager, prompt_templates::PromptTemplateManager};
+use codex_chat_lib::{
+    api::CodexClient, commands, db::DbManager, prompt_templates::PromptTemplateManager,
+};
 
 fn main() {
     let data_dir = dirs::data_dir()
@@ -32,7 +34,7 @@ fn main() {
     // 初始化提示词模板管理器
     let templates_dir = data_dir.join("prompts");
     let template_manager = Arc::new(Mutex::new(
-        PromptTemplateManager::new(templates_dir).expect("模板管理器初始化失败")
+        PromptTemplateManager::new(templates_dir).expect("模板管理器初始化失败"),
     ));
 
     tauri::Builder::default()

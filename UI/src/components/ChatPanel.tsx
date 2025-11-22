@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { type Message, type Session, getMessages, sendMessage, pickDocuments, pickWorkdir, getSessionState, setSessionState } from '../lib/api';
+import { type Message, type Session, getMessages, sendMessage, pickDocuments, pickWorkdir, getSessionState, setSessionState, renderTemplate } from '../lib/api';
 import { MessageList } from './MessageList';
 import { InputBox } from './InputBox';
 import { motion } from 'framer-motion';
@@ -87,6 +87,7 @@ type SessionUiState = {
     model?: string;
     thinkingDepth?: string;
     mode?: 'doc-dev' | 'general';
+    currentCycleStart?: number | null;
 };
 
 const defaultAutomationConfig = (): AutomationConfig => ({
@@ -98,7 +99,7 @@ const defaultAutomationConfig = (): AutomationConfig => ({
     autoRestartSession: true,
     newSessionEachLoop: true,
     maxCycles: 3,
-    infiniteLoop: false,
+    infiniteLoop: true,
     notifyText: '文档任务已完成',
 });
 
@@ -135,8 +136,9 @@ const createDefaultSessionState = (rootId: string, mode: 'doc-dev' | 'general'):
     rootId,
     pendingPrefill: undefined,
     model: MODELS[0].id,
-    thinkingDepth: 'low',
+    thinkingDepth: 'xhigh',
     mode,
+    currentCycleStart: null,
 });
 
 const formatBytes = (bytes: number) => {
@@ -172,6 +174,32 @@ const buildDocBlock = (docs: DocFile[], baseDir: string) => {
         .join('\n\n');
 };
 
+const buildWorkdirHint = (workdir: string) =>
+    `工作目录: ${workdir}（若包含 ~ 请先展开为绝对路径）\n所有文件操作必须在该目录下，使用文档提供的相对路径。`;
+
+const buildFixDirective = (completionSignal: string) => {
+    const signal = completionSignal.trim() || '已完全根据文档完成';
+    return [
+        '若发现实现与文档不符，必须直接修改/创建文件完成修复，不要只给检查结论。',
+        '请输出具体文件路径和补丁/代码段或需执行的命令，并在修复后简要总结变更。',
+        '若因权限/信息不足无法修改，说明原因并不要输出完成标记。',
+        `只有在确认无需修改或修复已完成且输出标记「${signal}」时才视为完成。`,
+    ].join('\n');
+};
+
+const buildDocBlockFromState = (state: SessionUiState) =>
+    buildDocBlock(
+        state.docFiles.map((f) => ({
+            path: f.path,
+            name: f.name,
+            size: f.size,
+            relativePath: f.relativePath,
+            absPath: f.absPath,
+            content: '',
+        })),
+        state.docBasePath,
+    );
+
 const notifyCompletion = (text: string) => {
     if (typeof Notification === 'undefined') return;
     if (Notification.permission === 'granted') {
@@ -195,7 +223,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
     const [, setIsMessagesLoading] = useState(true);
     const [streamingContent, setStreamingContent] = useState('');
     const [model, setModel] = useState(MODELS[0].id);
-    const [thinkingDepth, setThinkingDepth] = useState('low');
+    const [thinkingDepth, setThinkingDepth] = useState('xhigh');
     const [error, setError] = useState<string | null>(null);
 
     const [docFiles, setDocFiles] = useState<DocFile[]>([]);
@@ -216,6 +244,8 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
     const [lastCycleMs, setLastCycleMs] = useState<number | null>(null);
     const [sessionElapsedMs, setSessionElapsedMs] = useState(0);
     const [rootElapsedMap, setRootElapsedMap] = useState<Record<string, number>>({});
+    const [currentCycleStart, setCurrentCycleStart] = useState<number | null>(null);
+    const [now, setNow] = useState(Date.now());
     const prevSessionIdRef = useRef<string | null>(null);
 
     const resolveRootId = (id: string) => {
@@ -254,7 +284,8 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         setAutoAbort(state.autoAbort || false);
         setPendingPrefill(state.pendingPrefill);
         setModel(state.model || MODELS[0].id);
-        setThinkingDepth(state.thinkingDepth || 'low');
+        setThinkingDepth(state.thinkingDepth || 'xhigh');
+        setCurrentCycleStart(state.currentCycleStart || null);
     };
 
     const updateSessionStateEntry = (id: string, updater: (prev: SessionUiState) => SessionUiState) => {
@@ -298,6 +329,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
             model,
             thinkingDepth,
             mode,
+            currentCycleStart,
         };
         sessionStateRef.current = all;
         setStateVersion((v) => v + 1);
@@ -423,6 +455,12 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    useEffect(() => {
+        if (!autoRunning || !currentCycleStart) return;
+        const timer = setInterval(() => setNow(Date.now()), 1000);
+        return () => clearInterval(timer);
+    }, [autoRunning, currentCycleStart]);
 
     const aggregatedPromptLogs = useMemo(() => {
         const st = sessionStateRef.current[sessionId];
@@ -568,6 +606,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                 lastCycleMs: elapsed,
                 sessionElapsedMs: (prev.sessionElapsedMs || 0) + elapsed,
                 rootElapsedMap: nextRootElapsed,
+                currentCycleStart: null,
             };
         });
     };
@@ -657,25 +696,10 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         includeCompletionHint = true,
         customConfig: AutomationConfig = state.autoConfig,
     ) => {
-        const docBlock = buildDocBlock(
-            state.docFiles.map((f) => ({
-                path: f.path,
-                name: f.name,
-                size: f.size,
-                relativePath: f.relativePath,
-                absPath: f.absPath,
-                content: '',
-            })),
-            state.docBasePath,
-        );
+        const docBlock = buildDocBlockFromState(state);
         const workdir = state.docBasePath?.trim() || './';
-        const workdirHint = `工作目录: ${workdir}（若包含 ~ 请先展开为绝对路径）\n所有文件操作必须在该目录下，使用文档提供的相对路径。`;
-        const fixDirective = [
-            '若发现实现与文档不符，必须直接修改/创建文件完成修复，不要只给检查结论。',
-            '请输出具体文件路径和补丁/代码段或需执行的命令，并在修复后简要总结变更。',
-            '若因权限/信息不足无法修改，说明原因并不要输出完成标记。',
-            `只有在确认无需修改或修复已完成且输出标记「${customConfig.completionSignal.trim() || '已完全根据文档完成'}」时才视为完成。`,
-        ].join('\\n');
+        const workdirHint = buildWorkdirHint(workdir);
+        const fixDirective = buildFixDirective(customConfig.completionSignal);
 
         let promptBody = template.includes('{documents}')
             ? template.replace('{documents}', docBlock || '（未选择文档，请先选择）')
@@ -686,6 +710,75 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         }
 
         const prompt = `${workdirHint}\n${fixDirective}\n\n${promptBody}`;
+        appendPromptLog(sessionId, prompt);
+        return prompt;
+    };
+
+    const renderPromptFromTemplate = async (
+        name: string,
+        variables: Record<string, string>,
+        fallback: string,
+    ): Promise<string> => {
+        try {
+            return await renderTemplate(name, variables);
+        } catch (err) {
+            console.error(`渲染模板失败: ${name}`, err);
+            return fallback;
+        }
+    };
+
+    const buildCheckPrompt = async (state: SessionUiState, config: AutomationConfig) => {
+        const docBlock = buildDocBlockFromState(state);
+        const primaryDoc =
+            state.docFiles[0]?.absPath ||
+            state.docFiles[0]?.path ||
+            state.docFiles[0]?.relativePath ||
+            '';
+        const workdir = state.docBasePath?.trim() || './';
+        const workdirHint = buildWorkdirHint(workdir);
+        const fallback = `${workdirHint}\n${config.taskPrompt}${docBlock ? `\n\n${docBlock}` : ''}`;
+        const body = await renderPromptFromTemplate(
+            'check',
+            {
+                WORKING_DIR: workdir,
+                DOCS: docBlock || '（未选择文档，请先选择）',
+                DOC_ABSOLUTE_PATH: primaryDoc || docBlock || '（未选择文档，请先选择）',
+                COMPLETION_SIGNAL: config.completionSignal || '已完全根据文档完成',
+            },
+            fallback,
+        );
+        const prompt = `${workdirHint}\n${body}`;
+        appendPromptLog(sessionId, prompt);
+        return prompt;
+    };
+
+    const buildDoPrompt = async (
+        state: SessionUiState,
+        config: AutomationConfig,
+        checkResult: string,
+    ) => {
+        const docBlock = buildDocBlockFromState(state);
+        const primaryDoc =
+            state.docFiles[0]?.absPath ||
+            state.docFiles[0]?.path ||
+            state.docFiles[0]?.relativePath ||
+            '';
+        const workdir = state.docBasePath?.trim() || './';
+        const workdirHint = buildWorkdirHint(workdir);
+        const fixDirective = buildFixDirective(config.completionSignal);
+        const fallback = `${workdirHint}\n${fixDirective}\n\n${config.nextStep || config.taskPrompt}${docBlock ? `\n\n${docBlock}` : ''}\n\n检查结果:\n${checkResult || '（无）'}`;
+        const body = await renderPromptFromTemplate(
+            'do',
+            {
+                WORKING_DIR: workdir,
+                DOCS: docBlock || '（未选择文档，请先选择）',
+                DOC_ABSOLUTE_PATH: primaryDoc || docBlock || '（未选择文档，请先选择）',
+                CHECK_JSON: checkResult || '',
+                COMPLETION_SIGNAL: config.completionSignal || '已完全根据文档完成',
+            },
+            fallback,
+        );
+        const prompt = `${workdirHint}\n${fixDirective}\n\n${body}`;
         appendPromptLog(sessionId, prompt);
         return prompt;
     };
@@ -844,14 +937,20 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         try {
             const target = state.autoTargetSessionId || ownerId;
             const startedAt = Date.now();
-            const firstReply = await sendContent(
+            updateSessionStateEntry(ownerId, (prev) => ({ ...prev, currentCycleStart: startedAt }));
+            updateSessionStateEntry(ownerId, (prev) => ({
+                ...prev,
+                autoStatus: `第 ${cycle} 轮：发送检查 (check)…`,
+            }));
+            const checkPrompt = await buildCheckPrompt(state, config);
+            const checkReply = await sendContent(
                 ownerId,
                 target,
-                buildPromptWithDocs(state, config.taskPrompt, true, config),
+                checkPrompt,
                 true,
             );
-            if (firstReply?.content) {
-                appendLog(ownerId, `第 ${cycle} 轮主查询回复：${firstReply.content}`, cycle);
+            if (checkReply?.content) {
+                appendLog(ownerId, `第 ${cycle} 轮检查回复：${checkReply.content}`, cycle);
             }
             const currentState = ensureSessionState(ownerId);
             if (currentState.autoAbort) {
@@ -860,7 +959,26 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                 recordElapsed(ownerId, Date.now() - startedAt);
                 return;
             }
-            if (messageHasCompletion(firstReply, config.completionSignal)) {
+
+            updateSessionStateEntry(ownerId, (prev) => ({
+                ...prev,
+                autoStatus: `第 ${cycle} 轮：发送落地执行 (do)…`,
+            }));
+            const doPrompt = await buildDoPrompt(state, config, checkReply?.content || '');
+            const doReply = await sendContent(ownerId, target, doPrompt, true);
+            if (doReply?.content) {
+                appendLog(ownerId, `第 ${cycle} 轮执行回复：${doReply.content}`, cycle);
+            }
+
+            const latestState = ensureSessionState(ownerId);
+            if (latestState.autoAbort) {
+                updateSessionStateEntry(ownerId, (prev) => ({ ...prev, autoRunning: false, autoStatus: '已停止' }));
+                appendLog(ownerId, `第 ${cycle} 轮：手动停止，已终止后续请求。`, cycle);
+                recordElapsed(ownerId, Date.now() - startedAt);
+                return;
+            }
+
+            if (messageHasCompletion(doReply, config.completionSignal)) {
                 recordElapsed(ownerId, Date.now() - startedAt);
                 handleAutomationSuccess(ownerId, config, cycle);
                 return;
@@ -869,7 +987,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
             if (config.nextStep.trim()) {
                 updateSessionStateEntry(ownerId, (prev) => ({
                     ...prev,
-                    autoStatus: '未检测到标记，发送下一步指令…',
+                    autoStatus: '未检测到标记，发送补充指令…',
                 }));
                 const followReply = await sendContent(
                     ownerId,
@@ -885,6 +1003,11 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                     updateSessionStateEntry(ownerId, (prev) => ({ ...prev, autoRunning: false, autoStatus: '已停止' }));
                     appendLog(ownerId, `第 ${cycle} 轮：手动停止，已终止后续请求。`, cycle);
                     recordElapsed(ownerId, Date.now() - startedAt);
+                    return;
+                }
+                if (messageHasCompletion(followReply, config.completionSignal)) {
+                    recordElapsed(ownerId, Date.now() - startedAt);
+                    handleAutomationSuccess(ownerId, config, cycle);
                     return;
                 }
             }
@@ -1263,12 +1386,15 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                                 自动执行结果记录
                             </div>
                             <div className="flex gap-2 text-xs text-muted-foreground items-center">
-                                {lastCycleMs !== null && (
+                                {lastCycleMs !== null && !autoRunning && (
                                     <span>本轮 {formatDuration(lastCycleMs)}</span>
                                 )}
-                                <span>会话累计 {formatDuration(sessionElapsedMs)}</span>
+                                {autoRunning && currentCycleStart && (
+                                    <span>本轮 {formatDuration(now - currentCycleStart)}</span>
+                                )}
+                                <span>会话累计 {formatDuration(sessionElapsedMs + (autoRunning && currentCycleStart ? now - currentCycleStart : 0))}</span>
                                 <span>
-                                    任务累计 {formatDuration(rootElapsedMap[resolveRootId(autoTargetSessionId || sessionId)] || sessionElapsedMs)}
+                                    任务累计 {formatDuration((rootElapsedMap[resolveRootId(autoTargetSessionId || sessionId)] || sessionElapsedMs) + (autoRunning && currentCycleStart ? now - currentCycleStart : 0))}
                                 </span>
                                 <Button
                                     variant="ghost"

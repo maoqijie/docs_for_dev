@@ -1,11 +1,11 @@
-use std::sync::Arc;
 use std::collections::HashMap;
-use std::sync::Mutex;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::Mutex;
 
-use tauri::{Emitter, State, Window, Manager};
-use tauri_plugin_dialog::DialogExt;
 use serde::Serialize;
+use tauri::{Emitter, Manager, State, Window};
+use tauri_plugin_dialog::DialogExt;
 
 use crate::{
     api::{ChatMessage, CodexClient},
@@ -79,9 +79,15 @@ pub async fn send_message(
 
     let window_clone = window.clone();
     let response = client
-        .chat_stream(chat_messages, model, thinking_depth, working_dir, move |chunk| {
-            let _ = window_clone.emit("message-chunk", chunk);
-        })
+        .chat_stream(
+            chat_messages,
+            model,
+            thinking_depth,
+            working_dir,
+            move |chunk| {
+                let _ = window_clone.emit("message-chunk", chunk);
+            },
+        )
         .await
         .map_err(|e| {
             println!("[commands] codex 调用失败: {}", e);
@@ -119,7 +125,9 @@ pub async fn update_session_title(
 pub async fn list_templates(
     template_manager: State<'_, Arc<Mutex<PromptTemplateManager>>>,
 ) -> Result<Vec<PromptTemplate>, String> {
-    let manager = template_manager.lock().map_err(|e| format!("锁定模板管理器失败: {}", e))?;
+    let manager = template_manager
+        .lock()
+        .map_err(|e| format!("锁定模板管理器失败: {}", e))?;
     Ok(manager.list_templates())
 }
 
@@ -128,8 +136,11 @@ pub async fn get_template(
     template_manager: State<'_, Arc<Mutex<PromptTemplateManager>>>,
     name: String,
 ) -> Result<PromptTemplate, String> {
-    let manager = template_manager.lock().map_err(|e| format!("锁定模板管理器失败: {}", e))?;
-    manager.get_template(&name)
+    let manager = template_manager
+        .lock()
+        .map_err(|e| format!("锁定模板管理器失败: {}", e))?;
+    manager
+        .get_template(&name)
         .cloned()
         .ok_or_else(|| format!("模板不存在: {}", name))
 }
@@ -140,8 +151,11 @@ pub async fn render_template(
     name: String,
     variables: HashMap<String, String>,
 ) -> Result<String, String> {
-    let manager = template_manager.lock().map_err(|e| format!("锁定模板管理器失败: {}", e))?;
-    manager.render(&name, &variables)
+    let manager = template_manager
+        .lock()
+        .map_err(|e| format!("锁定模板管理器失败: {}", e))?;
+    manager
+        .render(&name, &variables)
         .map_err(|e| format!("渲染模板失败: {}", e))
 }
 
@@ -151,8 +165,11 @@ pub async fn update_template(
     name: String,
     content: String,
 ) -> Result<(), String> {
-    let mut manager = template_manager.lock().map_err(|e| format!("锁定模板管理器失败: {}", e))?;
-    manager.update_template(&name, content)
+    let mut manager = template_manager
+        .lock()
+        .map_err(|e| format!("锁定模板管理器失败: {}", e))?;
+    manager
+        .update_template(&name, content)
         .map_err(|e| format!("更新模板失败: {}", e))
 }
 
@@ -163,8 +180,11 @@ pub async fn create_template(
     content: String,
     description: String,
 ) -> Result<(), String> {
-    let mut manager = template_manager.lock().map_err(|e| format!("锁定模板管理器失败: {}", e))?;
-    manager.create_template(&name, content, description)
+    let mut manager = template_manager
+        .lock()
+        .map_err(|e| format!("锁定模板管理器失败: {}", e))?;
+    manager
+        .create_template(&name, content, description)
         .map_err(|e| format!("创建模板失败: {}", e))
 }
 
@@ -173,8 +193,11 @@ pub async fn delete_template(
     template_manager: State<'_, Arc<Mutex<PromptTemplateManager>>>,
     name: String,
 ) -> Result<(), String> {
-    let mut manager = template_manager.lock().map_err(|e| format!("锁定模板管理器失败: {}", e))?;
-    manager.delete_template(&name)
+    let mut manager = template_manager
+        .lock()
+        .map_err(|e| format!("锁定模板管理器失败: {}", e))?;
+    manager
+        .delete_template(&name)
         .map_err(|e| format!("删除模板失败: {}", e))
 }
 
@@ -183,7 +206,9 @@ pub async fn get_template_path(
     template_manager: State<'_, Arc<Mutex<PromptTemplateManager>>>,
     name: String,
 ) -> Result<String, String> {
-    let manager = template_manager.lock().map_err(|e| format!("锁定模板管理器失败: {}", e))?;
+    let manager = template_manager
+        .lock()
+        .map_err(|e| format!("锁定模板管理器失败: {}", e))?;
     let path = manager.get_template_path(&name);
     path.to_str()
         .map(|s| s.to_string())
@@ -262,11 +287,18 @@ fn common_root(paths: &[PathBuf]) -> Option<PathBuf> {
     }
     let mut iter = paths.iter();
     let first = iter.next()?.clone();
-    let mut prefix_components: Vec<_> = first.parent().unwrap_or_else(|| Path::new("")).components().collect();
+    let mut prefix_components: Vec<_> = first
+        .parent()
+        .unwrap_or_else(|| Path::new(""))
+        .components()
+        .collect();
 
     for path in iter {
         let mut new_prefix = Vec::new();
-        for (a, b) in prefix_components.iter().zip(path.parent().unwrap_or_else(|| Path::new("")).components()) {
+        for (a, b) in prefix_components
+            .iter()
+            .zip(path.parent().unwrap_or_else(|| Path::new("")).components())
+        {
             if a == &b {
                 new_prefix.push(a.clone());
             } else {
@@ -291,14 +323,24 @@ fn common_root(paths: &[PathBuf]) -> Option<PathBuf> {
 }
 
 fn is_allowed_ext(path: &Path) -> bool {
-    match path.extension().and_then(|e| e.to_str()).map(|s| s.to_ascii_lowercase()) {
-        Some(ext) => matches!(ext.as_str(), "md" | "markdown" | "mdx" | "txt" | "log" | "json"),
+    match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_ascii_lowercase())
+    {
+        Some(ext) => matches!(
+            ext.as_str(),
+            "md" | "markdown" | "mdx" | "txt" | "log" | "json"
+        ),
         None => false,
     }
 }
 
 #[tauri::command]
-pub async fn pick_documents(window: Window, recursive: Option<bool>) -> Result<Vec<PickedDocument>, String> {
+pub async fn pick_documents(
+    window: Window,
+    recursive: Option<bool>,
+) -> Result<Vec<PickedDocument>, String> {
     let recursive = recursive.unwrap_or(true);
 
     let dialog = window.app_handle().dialog();
@@ -307,11 +349,7 @@ pub async fn pick_documents(window: Window, recursive: Option<bool>) -> Result<V
     let mut root_hint: Option<PathBuf> = None;
 
     // 优先选择文件（可多选）
-    if let Some(files) = dialog
-        .file()
-        .set_title("选择文档")
-        .blocking_pick_files()
-    {
+    if let Some(files) = dialog.file().set_title("选择文档").blocking_pick_files() {
         let mut converted = Vec::new();
         for f in files {
             if let Ok(p) = f.into_path() {
@@ -340,23 +378,26 @@ pub async fn pick_documents(window: Window, recursive: Option<bool>) -> Result<V
         return Ok(vec![]);
     }
 
-    let filtered: Vec<PathBuf> = paths
-        .into_iter()
-        .filter(|p| is_allowed_ext(p))
-        .collect();
+    let filtered: Vec<PathBuf> = paths.into_iter().filter(|p| is_allowed_ext(p)).collect();
 
     if filtered.is_empty() {
         return Ok(vec![]);
     }
 
-    let root = common_root(&filtered).or(root_hint).unwrap_or_else(|| PathBuf::from("."));
+    let root = common_root(&filtered)
+        .or(root_hint)
+        .unwrap_or_else(|| PathBuf::from("."));
 
     let mut result = Vec::new();
     for path in filtered {
         if let Ok(meta) = std::fs::metadata(&path) {
             let rel = path.strip_prefix(&root).unwrap_or(&path);
             let item = PickedDocument {
-                name: path.file_name().and_then(|s| s.to_str()).unwrap_or_default().to_string(),
+                name: path
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or_default()
+                    .to_string(),
                 path: path.to_string_lossy().to_string(),
                 size: meta.len(),
                 relative_path: rel.to_string_lossy().to_string(),
