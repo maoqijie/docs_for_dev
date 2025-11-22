@@ -327,7 +327,6 @@ function App() {
                 <TemplateEditor />
               ) : currentSessionId ? (
                 <ChatPanel
-                  key={currentSessionId}
                   sessionId={currentSessionId}
                   mode={mode || 'doc-dev'}
                   onModeBack={handleBackToModePicker}

@@ -334,14 +334,6 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
             setStateVersion((v) => v + 1);
         }
 
-        // 切换/启动时禁止继承自动执行的运行态，防止开屏就显示“生成中”
-        state = {
-            ...state,
-            autoRunning: false,
-            autoStatus: '',
-            autoTargetSessionId: null,
-        };
-        sessionStateRef.current[id] = state;
         syncStateToHooks(id);
         setIsLoading(false);
         setIsMessagesLoading(false);
