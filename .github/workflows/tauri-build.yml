@@ -52,6 +52,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: Backend/src-tauri
+          distPath: ../UI/dist
 
   build-macos:
     needs: gate
@@ -82,6 +83,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: Backend/src-tauri
+          distPath: ../UI/dist
 
   build-windows:
     needs: gate
@@ -112,3 +114,4 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: Backend/src-tauri
+          distPath: ../UI/dist
