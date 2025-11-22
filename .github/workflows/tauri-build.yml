@@ -204,6 +204,13 @@ jobs:
         with:
           path: artifacts
 
+      - name: Collect release assets
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          find artifacts -type f \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name '*.bin' -o -name '*.dmg' -o -name '*.msi' -o -name '*.exe' \) -print -exec cp {} release-assets/ \;
+          ls -la release-assets
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         env:
@@ -214,4 +221,5 @@ jobs:
           body: |
             Commit: ${{ github.sha }}
             Message: ${{ github.event.head_commit.message || 'manual dispatch' }}
-          files: artifacts/**
+          files: release-assets/*
+          fail_on_unmatched_files: true
