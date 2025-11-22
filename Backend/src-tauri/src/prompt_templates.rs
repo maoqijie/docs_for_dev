@@ -80,10 +80,6 @@ impl PromptTemplateManager {
     /// 写入默认模板（缺失时补充，不覆盖用户修改）
     fn ensure_default_templates(&self) -> anyhow::Result<()> {
         let defaults = vec![
-            (
-                "doc-driven-dev.template.txt",
-                include_str!("../prompts/doc-driven-dev.template.txt"),
-            ),
             ("check.md", include_str!("../prompts/check.md")),
             ("do.md", include_str!("../prompts/do.md")),
         ];
@@ -251,7 +247,6 @@ fn default_description(name: &str) -> String {
     match name {
         "check" => "文档驱动-检查阶段提示词".to_string(),
         "do" => "文档驱动-落地阶段提示词".to_string(),
-        "doc-driven-dev" => "文档驱动一体化模板".to_string(),
         _ => format!("{} 提示词模板", name),
     }
 }

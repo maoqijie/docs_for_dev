@@ -336,20 +336,57 @@ fn is_allowed_ext(path: &Path) -> bool {
     }
 }
 
+fn normalize_directory(input: &str) -> Option<PathBuf> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let expanded = if trimmed.starts_with("~/") {
+        dirs::home_dir().map(|home| home.join(trimmed.trim_start_matches("~/")))
+    } else {
+        Some(PathBuf::from(trimmed))
+    }?;
+
+    if expanded.is_absolute() {
+        if expanded.exists() {
+            return Some(expanded);
+        }
+        return expanded.canonicalize().ok();
+    }
+
+    std::env::current_dir()
+        .map(|cwd| cwd.join(expanded))
+        .ok()
+        .and_then(|p| {
+            if p.exists() {
+                Some(p)
+            } else {
+                p.canonicalize().ok()
+            }
+        })
+}
+
 #[tauri::command]
 pub async fn pick_documents(
     window: Window,
     recursive: Option<bool>,
+    base_dir: Option<String>,
 ) -> Result<Vec<PickedDocument>, String> {
     let recursive = recursive.unwrap_or(true);
 
     let dialog = window.app_handle().dialog();
+    let normalized_base = base_dir.as_deref().and_then(|dir| normalize_directory(dir));
 
     let mut paths: Vec<PathBuf> = Vec::new();
     let mut root_hint: Option<PathBuf> = None;
 
     // 优先选择文件（可多选）
-    if let Some(files) = dialog.file().set_title("选择文档").blocking_pick_files() {
+    let mut file_builder = dialog.file().set_title("选择文档");
+    if let Some(dir) = normalized_base.clone() {
+        file_builder = file_builder.set_directory(dir);
+    }
+    if let Some(files) = file_builder.blocking_pick_files() {
         let mut converted = Vec::new();
         for f in files {
             if let Ok(p) = f.into_path() {
@@ -362,11 +399,11 @@ pub async fn pick_documents(
 
     // 如果没有选文件，则尝试选择文件夹
     if paths.is_empty() {
-        if let Some(folder) = dialog
-            .file()
-            .set_title("选择文档文件夹")
-            .blocking_pick_folder()
-        {
+        let mut folder_builder = dialog.file().set_title("选择文档文件夹");
+        if let Some(dir) = normalized_base {
+            folder_builder = folder_builder.set_directory(dir);
+        }
+        if let Some(folder) = folder_builder.blocking_pick_folder() {
             if let Ok(folder_path) = folder.into_path() {
                 root_hint = Some(folder_path.clone());
                 paths = collect_files(&folder_path, recursive);
