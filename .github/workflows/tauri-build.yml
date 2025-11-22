@@ -1,5 +1,8 @@
 name: Tauri Build
 
+permissions:
+  contents: write
+
 on:
   push:
     branches:
