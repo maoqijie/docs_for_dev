@@ -1,0 +1,114 @@
+name: Tauri Build
+
+on:
+  push:
+    branches:
+      - "**"
+  workflow_dispatch:
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.filter.outputs.should_run }}
+    steps:
+      - name: Decide build eligibility
+        id: filter
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.event.head_commit.message }}" == build* ]]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build-linux:
+    needs: gate
+    if: needs.gate.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install UI deps
+        run: npm ci
+        working-directory: UI
+
+      - name: Build UI
+        run: npm run build
+        working-directory: UI
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Tauri (Linux)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: Backend/src-tauri
+
+  build-macos:
+    needs: gate
+    if: needs.gate.outputs.should_run == 'true'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install UI deps
+        run: npm ci
+        working-directory: UI
+
+      - name: Build UI
+        run: npm run build
+        working-directory: UI
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Tauri (macOS)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: Backend/src-tauri
+
+  build-windows:
+    needs: gate
+    if: needs.gate.outputs.should_run == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install UI deps
+        run: npm ci
+        working-directory: UI
+
+      - name: Build UI
+        run: npm run build
+        working-directory: UI
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Tauri (Windows)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: Backend/src-tauri
