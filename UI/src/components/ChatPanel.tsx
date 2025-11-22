@@ -709,6 +709,10 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
             return;
         }
         const state = ensureSessionState(ownerId);
+        if (state.autoRunning) {
+            appendLog(ownerId, '检测到已有自动循环在运行，本次请求忽略。');
+            return;
+        }
         const config = state.autoConfig;
         updateSessionStateEntry(ownerId, (prev) => ({
             ...prev,
@@ -719,8 +723,9 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
             autoCycle: cycle,
         }));
         try {
-            // 若要求每轮新会话，先创建后切换再排队执行
-            if (config.newSessionEachLoop || config.autoRestartSession) {
+            // 若要求每轮新会话，或是重试轮次（cycle > 1 且 autoRestartSession 开启），则创建新会话
+            const shouldCreateNewSession = config.newSessionEachLoop || (config.autoRestartSession && cycle > 1);
+            if (shouldCreateNewSession) {
                 if (onCreateSession) {
                     updateSessionStateEntry(ownerId, (prev) => ({
                         ...prev,
