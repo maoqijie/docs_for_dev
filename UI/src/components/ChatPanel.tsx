@@ -279,9 +279,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
     const [error, setError] = useState<string | null>(null);
 
     const [docFiles, setDocFiles] = useState<DocFile[]>([]);
-    const [docBasePath, setDocBasePath] = useState(() => {
-        return localStorage.getItem('codex-doc-base') || '';
-    });
+    const [docBasePath, setDocBasePath] = useState('');
     const [isPickingDocs, setIsPickingDocs] = useState(false);
     const docInputRef = useRef<HTMLInputElement>(null);
     const [autoConfig, setAutoConfig] = useState<AutomationConfig>(() => defaultAutomationConfig());
@@ -490,10 +488,6 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
             cancelled = true;
         };
     }, [sessionId]);
-
-    useEffect(() => {
-        localStorage.setItem('codex-doc-base', docBasePath);
-    }, [docBasePath]);
 
     useEffect(() => {
         if (!isSessionHydrated(sessionId)) return;
