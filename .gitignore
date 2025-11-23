@@ -1,4 +1,5 @@
 .spec-workflow/
 *.md
 !README.md
+!Backend/src-tauri/prompts/*.md
 **/target/
