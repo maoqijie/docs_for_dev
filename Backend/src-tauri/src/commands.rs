@@ -247,7 +247,7 @@ pub async fn send_system_notification(
         .config()
         .product_name
         .clone()
-        .unwrap_or_else(|| "Codex Chat".to_string());
+        .unwrap_or_else(|| "Docs_For_Dev".to_string());
     let resolved_title = title
         .and_then(|t| {
             let trimmed = t.trim().to_string();

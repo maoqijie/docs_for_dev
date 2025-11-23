@@ -1134,7 +1134,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                                     <span className="text-lg font-semibold">文档开发自动化</span>
                                 </div>
                                 <p className="text-sm text-muted-foreground">
-                                    选择文档→生成提示→自动调用 Codex，未输出完成标记则继续发送下一步并可在新会话循环重试。
+                                    选择文档→生成提示→自动调用模型，未输出完成标记则继续发送下一步并可在新会话循环重试。
                                 </p>
                             </div>
                             <div className="flex flex-wrap gap-2 text-xs">
@@ -1451,7 +1451,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                                 )}
                             </div>
                             <div className="space-y-2">
-                                <div className="text-xs font-semibold text-muted-foreground">Codex 返回</div>
+                                <div className="text-xs font-semibold text-muted-foreground">Docs_For_Dev 返回</div>
                                 {aggregatedCycleLogs.length === 0 ? (
                                     <p className="text-xs text-muted-foreground">还没有执行记录，点击“自动执行”后会在此累计展示每一轮的返回内容。</p>
                                 ) : (

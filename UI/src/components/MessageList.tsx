@@ -118,7 +118,7 @@ function MessageBubble({
             )}>
                 <div className="flex items-center gap-2 mb-1 px-1">
                     <span className="text-xs font-medium text-muted-foreground">
-                        {isUser ? 'You' : 'Codex AI'}
+                        {isUser ? 'You' : 'Docs_For_Dev'}
                     </span>
                     <span className="text-[10px] text-muted-foreground/60">
                         {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}

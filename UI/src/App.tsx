@@ -353,7 +353,7 @@ function App() {
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <h2 className="text-3xl font-bold tracking-tight">欢迎使用 Codex AI</h2>
+                      <h2 className="text-3xl font-bold tracking-tight">欢迎使用 Docs_For_Dev</h2>
                       <p className="text-muted-foreground text-lg">
                         您的智能编程助手，随时准备为您解答问题、编写代码。
                       </p>

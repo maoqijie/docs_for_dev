@@ -231,7 +231,7 @@ export function InputBox({ onSend, disabled, sessionId, prefill, onPrefillConsum
                 )}
                 <div className="text-center mt-2">
                     <p className="text-xs text-muted-foreground/50">
-                        支持粘贴或上传图片/文件，Codex AI 可能生成不准确信息，请核对重要事实。
+                        支持粘贴或上传图片/文件，Docs_For_Dev 可能生成不准确信息，请核对重要事实。
                     </p>
                 </div>
             </motion.form>

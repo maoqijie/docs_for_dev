@@ -66,7 +66,7 @@ export function Sidebar({
                             <Sparkles className="h-5 w-5 text-primary" />
                         </div>
                         <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
-                            Codex AI
+                            Docs_For_Dev
                         </h1>
                     </div>
                     <div className="flex items-center gap-1">
