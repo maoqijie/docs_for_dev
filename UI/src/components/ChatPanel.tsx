@@ -424,7 +424,9 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                 try {
                     state = JSON.parse(remote) as SessionUiState;
                     // 若发现归属不一致，重置为默认以避免串档
-                    if (state.stateOwnerId && state.stateOwnerId !== id) {
+                    const ownerMismatch = state.stateOwnerId && state.stateOwnerId !== id;
+                    const legacyVersion = !state.stateVersion || state.stateVersion < 2;
+                    if (ownerMismatch || legacyVersion) {
                         state = createDefaultSessionState(resolveRootId(id), mode, id);
                     } else if (!state.stateOwnerId) {
                         state = { ...state, stateOwnerId: id, stateVersion: 2 };
