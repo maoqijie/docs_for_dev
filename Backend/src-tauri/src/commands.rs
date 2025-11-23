@@ -4,8 +4,9 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use serde::Serialize;
-use tauri::{Emitter, Manager, State, Window};
+use tauri::{AppHandle, Emitter, Manager, State, Window};
 use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_notification::NotificationExt;
 
 use crate::{
     api::{ChatMessage, CodexClient},
@@ -231,6 +232,39 @@ pub async fn pick_workdir(window: Window) -> Result<Option<String>, String> {
     } else {
         Ok(None)
     }
+}
+
+#[tauri::command]
+pub async fn send_system_notification(
+    app: AppHandle,
+    title: Option<String>,
+    body: String,
+) -> Result<(), String> {
+    if body.trim().is_empty() {
+        return Err("通知内容为空".to_string());
+    }
+    let fallback = app
+        .config()
+        .product_name
+        .clone()
+        .unwrap_or_else(|| "Codex Chat".to_string());
+    let resolved_title = title
+        .and_then(|t| {
+            let trimmed = t.trim().to_string();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed)
+            }
+        })
+        .unwrap_or(fallback);
+
+    app.notification()
+        .builder()
+        .title(resolved_title)
+        .body(body)
+        .show()
+        .map_err(|e| format!("发送系统通知失败: {}", e))
 }
 
 #[tauri::command]

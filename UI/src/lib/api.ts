@@ -177,3 +177,11 @@ export async function setSessionState(sessionId: string, state: string): Promise
 export async function renderTemplate(name: string, variables: Record<string, string>): Promise<string> {
     return await safeInvoke('render_template', { name, variables });
 }
+
+// ==================== 系统通知 ====================
+
+export async function sendSystemNotification(body: string, title?: string): Promise<void> {
+    const payload = body?.trim();
+    if (!payload) return;
+    await safeInvoke('send_system_notification', { title, body: payload });
+}

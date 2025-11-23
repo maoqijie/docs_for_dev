@@ -1,5 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { type Message, type Session, getMessages, sendMessage, pickDocuments, pickWorkdir, getSessionState, setSessionState, renderTemplate } from '../lib/api';
+import {
+    type Message,
+    type Session,
+    getMessages,
+    sendMessage,
+    pickDocuments,
+    pickWorkdir,
+    getSessionState,
+    setSessionState,
+    renderTemplate,
+    sendSystemNotification,
+} from '../lib/api';
 import { MessageList } from './MessageList';
 import { InputBox } from './InputBox';
 import { motion } from 'framer-motion';
@@ -99,7 +110,7 @@ const defaultAutomationConfig = (): AutomationConfig => ({
     newSessionEachLoop: true,
     maxCycles: 3,
     infiniteLoop: true,
-    notifyText: '文档任务已完成',
+    notifyText: 'xxx任务已完成',
 });
 
 const MODELS = [
@@ -217,18 +228,32 @@ const extractFirstJson = (text: string): string | null => {
 };
 
 const notifyCompletion = (text: string) => {
-    if (typeof Notification === 'undefined') return;
-    if (Notification.permission === 'granted') {
-        new Notification(text);
+    const payload = text?.trim() || 'xxx任务已完成';
+    if (!payload) return;
+
+    const showBrowserNotification = () => {
+        if (typeof Notification === 'undefined') return;
+        if (Notification.permission === 'granted') {
+            new Notification(payload);
+            return;
+        }
+        if (Notification.permission !== 'denied') {
+            Notification.requestPermission().then((permission) => {
+                if (permission === 'granted') {
+                    new Notification(payload);
+                }
+            });
+        }
+    };
+
+    if (isTauri()) {
+        sendSystemNotification(payload).catch((err) => {
+            console.error('系统通知发送失败，使用浏览器通知兜底', err);
+            showBrowserNotification();
+        });
         return;
     }
-    if (Notification.permission !== 'denied') {
-        Notification.requestPermission().then((permission) => {
-            if (permission === 'granted') {
-                new Notification(text);
-            }
-        });
-    }
+    showBrowserNotification();
 };
 
 export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMarkSessionRoot, sessionRoots }: ChatPanelProps) {
@@ -887,7 +912,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
             autoRunning: false,
             autoTargetSessionId: null,
         }));
-        notifyCompletion(config.notifyText || '文档开发任务已完成');
+        notifyCompletion(config.notifyText || 'xxx任务已完成');
         appendLog(ownerId, `第 ${cycle} 轮：已完成，输出包含标记「${config.completionSignal}」`, cycle);
     };
 

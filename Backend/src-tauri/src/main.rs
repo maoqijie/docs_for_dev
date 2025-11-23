@@ -40,6 +40,7 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(db_manager)
         .manage(codex_client)
         .manage(template_manager)
@@ -61,6 +62,7 @@ fn main() {
             commands::get_template_path,
             commands::pick_workdir,
             commands::pick_documents,
+            commands::send_system_notification,
         ])
         .run(tauri::generate_context!())
         .expect("启动 Tauri 应用失败");
