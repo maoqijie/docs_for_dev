@@ -200,6 +200,23 @@ const buildDocBlockFromState = (state: SessionUiState) =>
         state.docBasePath,
     );
 
+const extractFirstJson = (text: string): string | null => {
+    const idx = text.indexOf('{');
+    if (idx < 0) return null;
+    const slice = text.slice(idx);
+    // 尝试逐步截取到末尾，找到首个可解析的 JSON 对象
+    for (let end = slice.length; end > 0; end--) {
+        const candidate = slice.slice(0, end);
+        try {
+            const parsed = JSON.parse(candidate);
+            return JSON.stringify(parsed, null, 2);
+        } catch {
+            continue;
+        }
+    }
+    return null;
+};
+
 const notifyCompletion = (text: string) => {
     if (typeof Notification === 'undefined') return;
     if (Notification.permission === 'granted') {
@@ -655,7 +672,8 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
     const handlePickDocsNative = async () => {
         setIsPickingDocs(true);
         try {
-            const picked = await pickDocuments(true);
+            const base = (docBasePath || '').trim() || undefined;
+            const picked = await pickDocuments(true, base);
             if (!picked.length) return;
 
             setDocFiles((prev) => {
@@ -691,10 +709,12 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
     };
 
     const buildPromptWithDocs = (
+        ownerId: string,
         state: SessionUiState,
         template: string,
         includeCompletionHint = true,
         customConfig: AutomationConfig = state.autoConfig,
+        cycleId?: number,
     ) => {
         const docBlock = buildDocBlockFromState(state);
         const workdir = state.docBasePath?.trim() || './';
@@ -710,7 +730,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         }
 
         const prompt = `${workdirHint}\n${fixDirective}\n\n${promptBody}`;
-        appendPromptLog(sessionId, prompt);
+        appendPromptLog(ownerId, prompt, cycleId);
         return prompt;
     };
 
@@ -727,7 +747,12 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         }
     };
 
-    const buildCheckPrompt = async (state: SessionUiState, config: AutomationConfig) => {
+    const buildCheckPrompt = async (
+        ownerId: string,
+        state: SessionUiState,
+        config: AutomationConfig,
+        cycleId?: number,
+    ) => {
         const docBlock = buildDocBlockFromState(state);
         const primaryDoc =
             state.docFiles[0]?.absPath ||
@@ -748,14 +773,16 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
             fallback,
         );
         const prompt = `${workdirHint}\n${body}`;
-        appendPromptLog(sessionId, prompt);
+        appendPromptLog(ownerId, prompt, cycleId);
         return prompt;
     };
 
     const buildDoPrompt = async (
+        ownerId: string,
         state: SessionUiState,
         config: AutomationConfig,
         checkResult: string,
+        cycleId?: number,
     ) => {
         const docBlock = buildDocBlockFromState(state);
         const primaryDoc =
@@ -779,18 +806,23 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
             fallback,
         );
         const prompt = `${workdirHint}\n${fixDirective}\n\n${body}`;
-        appendPromptLog(sessionId, prompt);
+        appendPromptLog(ownerId, prompt, cycleId);
         return prompt;
     };
 
-    const handlePrefillToInput = () => {
-        const st = ensureSessionState(sessionId);
-        const prompt = buildPromptWithDocs(st, st.autoConfig.taskPrompt);
-        setPendingPrefill(prompt);
-        updateSessionStateEntry(sessionId, (prev) => ({ ...prev, pendingPrefill: prompt }));
-    };
-
     const startAutomation = async (cycle = 1, ownerId: string = sessionId) => {
+        updateSessionStateEntry(ownerId, (prev) => ({
+            ...prev,
+            autoPromptLogs: [],
+            cycleLogs: {},
+            autoStatus: '准备启动…',
+            autoCycle: 1,
+            lastCycleMs: null,
+            currentCycleStart: null,
+            autoTargetSessionId: null,
+            autoRunning: false,
+            autoAbort: false,
+        }));
         if (!isTauri()) {
             setError(tauriNotReadyMessage);
             updateSessionStateEntry(ownerId, (prev) => ({
@@ -942,7 +974,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                 ...prev,
                 autoStatus: `第 ${cycle} 轮：发送检查 (check)…`,
             }));
-            const checkPrompt = await buildCheckPrompt(state, config);
+            const checkPrompt = await buildCheckPrompt(ownerId, state, config, cycle);
             const checkReply = await sendContent(
                 ownerId,
                 target,
@@ -951,6 +983,13 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
             );
             if (checkReply?.content) {
                 appendLog(ownerId, `第 ${cycle} 轮检查回复：${checkReply.content}`, cycle);
+            }
+            const parsedCheckJson =
+                checkReply?.content ? extractFirstJson(checkReply.content) : null;
+            if (parsedCheckJson) {
+                appendLog(ownerId, `第 ${cycle} 轮检查结果(JSON)：\n${parsedCheckJson}`, cycle);
+            } else {
+                appendLog(ownerId, `第 ${cycle} 轮检查结果未解析到有效 JSON，原始内容已记录。`, cycle);
             }
             const currentState = ensureSessionState(ownerId);
             if (currentState.autoAbort) {
@@ -964,7 +1003,13 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                 ...prev,
                 autoStatus: `第 ${cycle} 轮：发送落地执行 (do)…`,
             }));
-            const doPrompt = await buildDoPrompt(state, config, checkReply?.content || '');
+            const doPrompt = await buildDoPrompt(
+                ownerId,
+                state,
+                config,
+                parsedCheckJson || checkReply?.content || '',
+                cycle,
+            );
             const doReply = await sendContent(ownerId, target, doPrompt, true);
             if (doReply?.content) {
                 appendLog(ownerId, `第 ${cycle} 轮执行回复：${doReply.content}`, cycle);
@@ -992,7 +1037,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                 const followReply = await sendContent(
                     ownerId,
                     target,
-                    buildPromptWithDocs(state, config.nextStep, true, config),
+                    buildPromptWithDocs(ownerId, state, config.nextStep, true, config, cycle),
                     true,
                 );
                 if (followReply?.content) {
@@ -1113,28 +1158,28 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                         <div className="grid md:grid-cols-[2fr_1.15fr] gap-4">
                             <div className="space-y-3">
                                 <div className="rounded-2xl border bg-muted/30 p-3 space-y-3">
-                                        <div className="flex items-center justify-between gap-2">
-                                            <div className="flex items-center gap-2 text-sm font-medium">
-                                                <FilePlus2 className="h-4 w-4" />
-                                                选择参考文档（可多选，自动插入提示）
-                                            </div>
-                                            <div className="flex gap-2">
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    onClick={handlePickDocs}
-                                                    disabled={isPickingDocs}
-                                                    className="rounded-full"
-                                                >
-                                                    {isPickingDocs ? (
-                                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                                    ) : (
-                                                        <>
-                                                            <Sparkles className="h-4 w-4 mr-1" />
-                                                            选择文档
-                                                        </>
-                                                    )}
-                                                </Button>
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2 text-sm font-medium">
+                                            <FilePlus2 className="h-4 w-4" />
+                                            选择参考文档（可多选，自动插入提示）
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={handlePickDocs}
+                                                disabled={isPickingDocs}
+                                                className="rounded-full"
+                                            >
+                                                {isPickingDocs ? (
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                ) : (
+                                                    <>
+                                                        <Sparkles className="h-4 w-4 mr-1" />
+                                                        选择文档
+                                                    </>
+                                                )}
+                                            </Button>
                                             {docFiles.length > 0 && (
                                                 <Button
                                                     variant="ghost"
@@ -1218,17 +1263,9 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                                     <div className="flex items-center justify-between gap-2">
                                         <div className="flex items-center gap-2 text-sm font-medium">
                                             <Wand2 className="h-4 w-4" />
-                                            任务提示词模板（支持 {`{documents}`} 自动替换）
+                                            自动使用内置 check/do 模板
                                         </div>
                                         <div className="flex gap-2">
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                className="rounded-full"
-                                                onClick={handlePrefillToInput}
-                                            >
-                                                插入到输入框
-                                            </Button>
                                             <Button
                                                 size="sm"
                                                 className="rounded-full"
@@ -1240,41 +1277,28 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                                             </Button>
                                         </div>
                                     </div>
-                                    <Textarea
-                                        rows={6}
-                                        value={autoConfig.taskPrompt}
-                                        onChange={(e) =>
-                                            setAutoConfig((prev) => ({ ...prev, taskPrompt: e.target.value }))
-                                        }
-                                        className="bg-background/80"
-                                        placeholder="例如：帮我检查 {documents} 是否已完全实现，完成后输出 `完成`。"
-                                    />
+                                    <div className="text-sm text-muted-foreground space-y-1">
+                                        <p>系统会自动注入 check / do 模板及文档列表、检查结果，无需手动填写任务提示。</p>
+                                        <p>如需调整提示词，请前往模板编辑器修改 check / do 内容。</p>
+                                    </div>
                                 </div>
                             </div>
 
                             <div className="space-y-3">
                                 <div className="rounded-2xl border bg-muted/30 p-4 space-y-3">
-                                    <div className="space-y-2">
-                                        <label className="text-sm font-medium">完成后输出标记</label>
-                                        <Input
-                                            value={autoConfig.completionSignal}
-                                            onChange={(e) =>
-                                                setAutoConfig((prev) => ({ ...prev, completionSignal: e.target.value }))
-                                            }
-                                            placeholder="如：完成 或 已完全根据文档完成"
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="text-sm font-medium">未完成时的下一步内容</label>
-                                        <Textarea
-                                            rows={4}
-                                            value={autoConfig.nextStep}
-                                            onChange={(e) =>
-                                                setAutoConfig((prev) => ({ ...prev, nextStep: e.target.value }))
-                                            }
-                                            className="bg-background/80"
-                                            placeholder="未给出完成标记时追加的指令，将自动附上文档路径（Codex会用Read工具读取）"
-                                        />
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="space-y-1">
+                                            <label className="text-sm font-medium">完成标记</label>
+                                            <div className="rounded-xl border bg-background/70 px-3 py-2 text-sm">
+                                                {autoConfig.completionSignal || '已完全根据文档完成'}（模板内置）
+                                            </div>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-sm font-medium">未完成补充指令</label>
+                                            <div className="rounded-xl border bg-background/70 px-3 py-2 text-sm text-muted-foreground whitespace-pre-line">
+                                                {autoConfig.nextStep || '继续根据文档完成'}
+                                            </div>
+                                        </div>
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <div className="space-y-2">

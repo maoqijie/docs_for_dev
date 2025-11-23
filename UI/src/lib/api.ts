@@ -127,9 +127,12 @@ export interface PickedDocument {
 /**
  * 通过 Tauri 调用系统文件/文件夹选择器，获取绝对路径
  */
-export async function pickDocuments(recursive: boolean = true): Promise<PickedDocument[]> {
+export async function pickDocuments(
+    recursive: boolean = true,
+    baseDir?: string,
+): Promise<PickedDocument[]> {
     try {
-        return await safeInvoke('pick_documents', { recursive });
+        return await safeInvoke('pick_documents', { recursive, base_dir: baseDir, baseDir });
     } catch (error) {
         console.error('pick_documents 调用失败', error);
         return [];
