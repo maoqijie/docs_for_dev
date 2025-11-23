@@ -1451,7 +1451,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                                 )}
                             </div>
                             <div className="space-y-2">
-                                <div className="text-xs font-semibold text-muted-foreground">Docs_For_Dev 返回</div>
+                                <div className="text-xs font-semibold text-muted-foreground">Codex 返回</div>
                                 {aggregatedCycleLogs.length === 0 ? (
                                     <p className="text-xs text-muted-foreground">还没有执行记录，点击“自动执行”后会在此累计展示每一轮的返回内容。</p>
                                 ) : (
