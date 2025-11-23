@@ -299,6 +299,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
     const [currentCycleStart, setCurrentCycleStart] = useState<number | null>(null);
     const [now, setNow] = useState(Date.now());
     const prevSessionIdRef = useRef<string | null>(null);
+    const hydratedSessionsRef = useRef<Record<string, boolean>>({});
     const normalizedAutoStatus = useMemo(() => {
         if (!autoStatus) return '';
         const cycleLabel = `第 ${autoCycle} 轮`;
@@ -312,6 +313,15 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
     const resolveRootId = (id: string) => {
         if (!sessionRoots) return id;
         return sessionRoots[id] || id;
+    };
+
+    const isSessionHydrated = (id: string | null | undefined) => {
+        if (!id) return false;
+        return hydratedSessionsRef.current[id] === true;
+    };
+
+    const markSessionHydrated = (id: string) => {
+        hydratedSessionsRef.current[id] = true;
     };
 
     const ensureSessionState = (id: string): SessionUiState => {
@@ -362,7 +372,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
     };
 
     const persistSessionState = async (id: string | null) => {
-        if (!id) return;
+        if (!id || !isSessionHydrated(id)) return;
         const rootId = resolveRootId(id);
         const all = { ...sessionStateRef.current };
         all[id] = {
@@ -427,6 +437,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
             setStateVersion((v) => v + 1);
         }
 
+        markSessionHydrated(id);
         syncStateToHooks(id);
         setIsLoading(false);
         setIsMessagesLoading(false);
@@ -448,20 +459,24 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
             const restored = await restoreSessionState(sessionId);
             if (!restored) {
                 if (cancelled) return;
-                setDocBasePath('');
+                const fallback = createDefaultSessionState(resolveRootId(sessionId), mode);
+                sessionStateRef.current[sessionId] = fallback;
+                markSessionHydrated(sessionId);
+                setStateVersion((v) => v + 1);
+                setDocBasePath(fallback.docBasePath);
                 setDocFiles([]);
-                setAutoConfig(defaultAutomationConfig());
-                setAutoPromptLogs([]);
-                setCycleLogs({});
-                setLastCycleMs(null);
-                setSessionElapsedMs(0);
-                setRootElapsedMap({});
-                setAutoStatus('');
-                setAutoCycle(1);
-                setAutoTargetSessionId(null);
-                setAutoRunning(false);
-                setAutoAbort(false);
-                setPendingPrefill(undefined);
+                setAutoConfig(fallback.autoConfig);
+                setAutoPromptLogs(fallback.autoPromptLogs);
+                setCycleLogs(fallback.cycleLogs);
+                setLastCycleMs(fallback.lastCycleMs);
+                setSessionElapsedMs(fallback.sessionElapsedMs);
+                setRootElapsedMap(fallback.rootElapsedMap);
+                setAutoStatus(fallback.autoStatus);
+                setAutoCycle(fallback.autoCycle);
+                setAutoTargetSessionId(fallback.autoTargetSessionId);
+                setAutoRunning(fallback.autoRunning);
+                setAutoAbort(fallback.autoAbort);
+                setPendingPrefill(fallback.pendingPrefill);
             }
 
             if (!cancelled) {
@@ -481,6 +496,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
     }, [docBasePath]);
 
     useEffect(() => {
+        if (!isSessionHydrated(sessionId)) return;
         updateSessionStateEntry(sessionId, (prev) => ({
             ...prev,
             model,
