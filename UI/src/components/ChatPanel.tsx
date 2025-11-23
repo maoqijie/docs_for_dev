@@ -27,7 +27,6 @@ import {
     Wand2,
 } from 'lucide-react';
 import { Button } from './ui/button';
-import { Textarea } from './ui/textarea';
 import { Input } from './ui/input';
 import { cn } from '../lib/utils';
 
