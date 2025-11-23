@@ -99,6 +99,8 @@ type SessionUiState = {
     thinkingDepth?: string;
     mode?: 'doc-dev' | 'general';
     currentCycleStart?: number | null;
+    stateOwnerId?: string;
+    stateVersion?: number;
 };
 
 const defaultAutomationConfig = (): AutomationConfig => ({
@@ -130,7 +132,7 @@ const THINKING_LEVELS = [
     { id: 'high', name: 'High Effort' },
 ];
 
-const createDefaultSessionState = (rootId: string, mode: 'doc-dev' | 'general'): SessionUiState => ({
+const createDefaultSessionState = (rootId: string, mode: 'doc-dev' | 'general', ownerId: string): SessionUiState => ({
     docBasePath: '',
     docFiles: [],
     autoConfig: defaultAutomationConfig(),
@@ -150,6 +152,8 @@ const createDefaultSessionState = (rootId: string, mode: 'doc-dev' | 'general'):
     thinkingDepth: 'xhigh',
     mode,
     currentCycleStart: null,
+    stateOwnerId: ownerId,
+    stateVersion: 2,
 });
 
 const formatBytes = (bytes: number) => {
@@ -325,7 +329,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
     const ensureSessionState = (id: string): SessionUiState => {
         const existing = sessionStateRef.current[id];
         if (existing) return existing;
-        const created = createDefaultSessionState(resolveRootId(id), mode);
+        const created = createDefaultSessionState(resolveRootId(id), mode, id);
         sessionStateRef.current[id] = created;
         return created;
     };
@@ -360,13 +364,13 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
     const updateSessionStateEntry = (id: string, updater: (prev: SessionUiState) => SessionUiState) => {
         const prev = ensureSessionState(id);
         const next = updater(prev);
-        sessionStateRef.current[id] = next;
+        sessionStateRef.current[id] = { ...next, stateOwnerId: id, stateVersion: 2 };
         if (id === sessionId) {
             syncStateToHooks(id);
         }
         setStateVersion((v) => v + 1);
-        void setSessionState(id, JSON.stringify(next)).catch((err) => console.error('保存会话状态失败', err));
-        return next;
+        void setSessionState(id, JSON.stringify(sessionStateRef.current[id])).catch((err) => console.error('保存会话状态失败', err));
+        return sessionStateRef.current[id];
     };
 
     const persistSessionState = async (id: string | null) => {
@@ -399,6 +403,8 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
             thinkingDepth,
             mode,
             currentCycleStart,
+            stateOwnerId: id,
+            stateVersion: 2,
         };
         sessionStateRef.current = all;
         setStateVersion((v) => v + 1);
@@ -417,6 +423,12 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
             if (remote) {
                 try {
                     state = JSON.parse(remote) as SessionUiState;
+                    // 若发现归属不一致，重置为默认以避免串档
+                    if (state.stateOwnerId && state.stateOwnerId !== id) {
+                        state = createDefaultSessionState(resolveRootId(id), mode, id);
+                    } else if (!state.stateOwnerId) {
+                        state = { ...state, stateOwnerId: id, stateVersion: 2 };
+                    }
                     sessionStateRef.current[id] = state;
                     setStateVersion((v) => v + 1);
                 } catch (err) {
@@ -429,7 +441,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
 
         const rootId = resolveRootId(id);
         if (!state.rootId) {
-            state = { ...state, rootId };
+            state = { ...state, rootId, stateOwnerId: id, stateVersion: state.stateVersion || 2 };
             sessionStateRef.current[id] = state;
             void setSessionState(id, JSON.stringify(state));
             setStateVersion((v) => v + 1);
@@ -457,7 +469,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
             const restored = await restoreSessionState(sessionId);
             if (!restored) {
                 if (cancelled) return;
-                const fallback = createDefaultSessionState(resolveRootId(sessionId), mode);
+                const fallback = createDefaultSessionState(resolveRootId(sessionId), mode, sessionId);
                 sessionStateRef.current[sessionId] = fallback;
                 markSessionHydrated(sessionId);
                 setStateVersion((v) => v + 1);
@@ -760,6 +772,29 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
 
     const handlePickDocs = () => {
         handlePickDocsNative();
+    };
+
+    const handleResetDocState = () => {
+        const ownerId = sessionId;
+        setDocBasePath('');
+        setDocFiles([]);
+        setAutoPromptLogs([]);
+        setCycleLogs({});
+        setLastCycleMs(null);
+        setSessionElapsedMs(0);
+        setRootElapsedMap({});
+        updateSessionStateEntry(ownerId, (prev) => ({
+            ...prev,
+            docBasePath: '',
+            docFiles: [],
+            autoPromptLogs: [],
+            cycleLogs: {},
+            lastCycleMs: null,
+            sessionElapsedMs: 0,
+            rootElapsedMap: {},
+            stateOwnerId: ownerId,
+            stateVersion: 2,
+        }));
     };
 
     const renderPromptFromTemplate = async (
@@ -1234,6 +1269,14 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                                         </Button>
                                         <Button variant="ghost" size="sm" onClick={() => setDocBasePath('')}>
                                             清空目录
+                                        </Button>
+                                        <Button
+                                            variant="destructive"
+                                            size="sm"
+                                            className="rounded-full whitespace-nowrap"
+                                            onClick={handleResetDocState}
+                                        >
+                                            重置当前会话
                                         </Button>
                                     </div>
                                     <p className="text-xs text-muted-foreground">发送时会附上工作目录与文件相对路径，便于模型按正确路径引用。</p>
