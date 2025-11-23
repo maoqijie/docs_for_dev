@@ -43,6 +43,7 @@ import { cn } from '../lib/utils';
 
 interface ChatPanelProps {
     sessionId: string;
+    sessionTitle: string;
     mode: 'doc-dev' | 'general';
     onModeBack: () => void;
     onCreateSession?: (title?: string, options?: { focus?: boolean }) => Promise<Session | undefined>;
@@ -227,8 +228,18 @@ const extractFirstJson = (text: string): string | null => {
     return null;
 };
 
-const notifyCompletion = (text: string) => {
-    const payload = text?.trim() || 'xxx任务已完成';
+const resolveNotifyText = (text: string | undefined, taskTitle: string) => {
+    const name = taskTitle?.trim() || '当前任务';
+    const template = text?.trim();
+    if (!template) return `${name} 已完成`;
+    if (template.includes('xxx')) return template.replace(/xxx/g, name);
+    if (template.includes('{{task}}')) return template.replace(/{{task}}/g, name);
+    if (template.includes('{task}')) return template.replace(/{task}/g, name);
+    return template;
+};
+
+const notifyCompletion = (text: string | undefined, taskTitle: string) => {
+    const payload = resolveNotifyText(text, taskTitle);
     if (!payload) return;
 
     const showBrowserNotification = () => {
@@ -247,7 +258,7 @@ const notifyCompletion = (text: string) => {
     };
 
     if (isTauri()) {
-        sendSystemNotification(payload).catch((err) => {
+        sendSystemNotification(payload, taskTitle).catch((err) => {
             console.error('系统通知发送失败，使用浏览器通知兜底', err);
             showBrowserNotification();
         });
@@ -256,7 +267,7 @@ const notifyCompletion = (text: string) => {
     showBrowserNotification();
 };
 
-export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMarkSessionRoot, sessionRoots }: ChatPanelProps) {
+export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateSession, onMarkSessionRoot, sessionRoots }: ChatPanelProps) {
     const sessionStateRef = useRef<Record<string, SessionUiState>>({});
     const [stateVersion, setStateVersion] = useState(0);
     const [messages, setMessages] = useState<Message[]>([]);
@@ -288,6 +299,15 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
     const [currentCycleStart, setCurrentCycleStart] = useState<number | null>(null);
     const [now, setNow] = useState(Date.now());
     const prevSessionIdRef = useRef<string | null>(null);
+    const normalizedAutoStatus = useMemo(() => {
+        if (!autoStatus) return '';
+        const cycleLabel = `第 ${autoCycle} 轮`;
+        if (autoStatus.includes(cycleLabel)) return autoStatus;
+        const replaced = autoStatus.replace(/第\s*\d+\s*轮/, cycleLabel);
+        if (replaced !== autoStatus) return replaced;
+        if (autoRunning) return `${cycleLabel}：${autoStatus}`;
+        return autoStatus;
+    }, [autoStatus, autoCycle, autoRunning]);
 
     const resolveRootId = (id: string) => {
         if (!sessionRoots) return id;
@@ -912,7 +932,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
             autoRunning: false,
             autoTargetSessionId: null,
         }));
-        notifyCompletion(config.notifyText || 'xxx任务已完成');
+        notifyCompletion(config.notifyText, sessionTitle);
         appendLog(ownerId, `第 ${cycle} 轮：已完成，输出包含标记「${config.completionSignal}」`, cycle);
     };
 
@@ -1319,7 +1339,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                                             onChange={(e) =>
                                                 setAutoConfig((prev) => ({ ...prev, notifyText: e.target.value }))
                                                 }
-                                                placeholder="完成后系统通知内容"
+                                                placeholder="完成后系统通知内容（支持 xxx 或 {task} 占位任务名）"
                                             />
                                         </div>
                                     </div>
@@ -1356,7 +1376,7 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                                     </div>
                                     <div className="rounded-xl bg-background/70 border px-3 py-2 text-sm flex items-center gap-2">
                                         {autoStatus ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : <AlertTriangle className="h-4 w-4 text-muted-foreground" />}
-                                        <span className="text-muted-foreground">{autoStatus || '尚未开始自动循环，调整配置后点击自动执行。'}</span>
+                                        <span className="text-muted-foreground">{normalizedAutoStatus || autoStatus || '尚未开始自动循环，调整配置后点击自动执行。'}</span>
                                     </div>
                                     <div className="text-xs text-muted-foreground flex items-center gap-2">
                                         <Bell className="h-3.5 w-3.5" />

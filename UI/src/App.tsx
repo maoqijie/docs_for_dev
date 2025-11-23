@@ -118,6 +118,11 @@ function App() {
     return rootFiltered;
   }, [sessions, sessionModes, sessionRoots, mode]);
 
+  const currentSession = useMemo(
+    () => sessions.find((s) => s.id === currentSessionId) || null,
+    [sessions, currentSessionId],
+  );
+
   useEffect(() => {
     loadSessions();
   }, []);
@@ -329,6 +334,7 @@ function App() {
               ) : currentSessionId ? (
                 <ChatPanel
                   sessionId={currentSessionId}
+                  sessionTitle={currentSession?.title || '当前任务'}
                   mode={mode || 'doc-dev'}
                   onModeBack={handleBackToModePicker}
                   onCreateSession={handleNewSession}
