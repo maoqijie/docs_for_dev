@@ -990,6 +990,21 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
             } else {
                 appendLog(ownerId, `第 ${cycle} 轮检查结果未解析到有效 JSON，原始内容已记录。`, cycle);
             }
+            const checkStatusComplete =
+                parsedCheckJson &&
+                (() => {
+                    try {
+                        const obj = JSON.parse(parsedCheckJson);
+                        return typeof obj?.status === 'string' && obj.status.trim().toLowerCase() === 'complete';
+                    } catch {
+                        return false;
+                    }
+                })();
+            if (messageHasCompletion(checkReply, config.completionSignal) || checkStatusComplete) {
+                recordElapsed(ownerId, Date.now() - startedAt);
+                handleAutomationSuccess(ownerId, config, cycle);
+                return;
+            }
             const currentState = ensureSessionState(ownerId);
             if (currentState.autoAbort) {
                 updateSessionStateEntry(ownerId, (prev) => ({ ...prev, autoRunning: false, autoStatus: '已停止' }));
@@ -1022,12 +1037,6 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                 return;
             }
 
-            if (messageHasCompletion(doReply, config.completionSignal)) {
-                recordElapsed(ownerId, Date.now() - startedAt);
-                handleAutomationSuccess(ownerId, config, cycle);
-                return;
-            }
-
             if (config.nextStep.trim()) {
                 updateSessionStateEntry(ownerId, (prev) => ({
                     ...prev,
@@ -1047,11 +1056,6 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                     updateSessionStateEntry(ownerId, (prev) => ({ ...prev, autoRunning: false, autoStatus: '已停止' }));
                     appendLog(ownerId, `第 ${cycle} 轮：手动停止，已终止后续请求。`, cycle);
                     recordElapsed(ownerId, Date.now() - startedAt);
-                    return;
-                }
-                if (messageHasCompletion(followReply, config.completionSignal)) {
-                    recordElapsed(ownerId, Date.now() - startedAt);
-                    handleAutomationSuccess(ownerId, config, cycle);
                     return;
                 }
             }
