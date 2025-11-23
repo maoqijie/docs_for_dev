@@ -707,32 +707,6 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
         handlePickDocsNative();
     };
 
-    const buildPromptWithDocs = (
-        ownerId: string,
-        state: SessionUiState,
-        template: string,
-        includeCompletionHint = true,
-        customConfig: AutomationConfig = state.autoConfig,
-        cycleId?: number,
-    ) => {
-        const docBlock = buildDocBlockFromState(state);
-        const workdir = state.docBasePath?.trim() || './';
-        const workdirHint = buildWorkdirHint(workdir);
-        const fixDirective = buildFixDirective(customConfig.completionSignal);
-
-        let promptBody = template.includes('{documents}')
-            ? template.replace('{documents}', docBlock || '（未选择文档，请先选择）')
-            : `${template}${docBlock ? `\n\n${docBlock}` : ''}`;
-
-        if (includeCompletionHint && customConfig.completionSignal.trim()) {
-            promptBody = `${promptBody}\n\n完成后请输出精确标记：${customConfig.completionSignal.trim()}，否则视为未完成。`;
-        }
-
-        const prompt = `${workdirHint}\n${fixDirective}\n\n${promptBody}`;
-        appendPromptLog(ownerId, prompt, cycleId);
-        return prompt;
-    };
-
     const renderPromptFromTemplate = async (
         name: string,
         variables: Record<string, string>,
@@ -1035,29 +1009,6 @@ export function ChatPanel({ sessionId, mode, onModeBack, onCreateSession, onMark
                 appendLog(ownerId, `第 ${cycle} 轮：手动停止，已终止后续请求。`, cycle);
                 recordElapsed(ownerId, Date.now() - startedAt);
                 return;
-            }
-
-            if (config.nextStep.trim()) {
-                updateSessionStateEntry(ownerId, (prev) => ({
-                    ...prev,
-                    autoStatus: '未检测到标记，发送补充指令…',
-                }));
-                const followReply = await sendContent(
-                    ownerId,
-                    target,
-                    buildPromptWithDocs(ownerId, state, config.nextStep, true, config, cycle),
-                    true,
-                );
-                if (followReply?.content) {
-                    appendLog(ownerId, `第 ${cycle} 轮补充查询回复：${followReply.content}`, cycle);
-                }
-                const latest = ensureSessionState(ownerId);
-                if (latest.autoAbort) {
-                    updateSessionStateEntry(ownerId, (prev) => ({ ...prev, autoRunning: false, autoStatus: '已停止' }));
-                    appendLog(ownerId, `第 ${cycle} 轮：手动停止，已终止后续请求。`, cycle);
-                    recordElapsed(ownerId, Date.now() - startedAt);
-                    return;
-                }
             }
 
             recordElapsed(ownerId, Date.now() - startedAt);
