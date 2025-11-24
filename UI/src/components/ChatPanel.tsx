@@ -1340,62 +1340,36 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
 
                             <div className="space-y-3">
                                 <div className="rounded-2xl border bg-muted/30 p-4 space-y-3">
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div className="space-y-1">
-                                            <label className="text-sm font-medium">完成标记</label>
-                                            <div className="rounded-xl border bg-background/70 px-3 py-2 text-sm">
-                                                {autoConfig.completionSignal || '已完全根据文档完成'}（模板内置）
-                                            </div>
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-sm font-medium">未完成补充指令</label>
-                                            <div className="rounded-xl border bg-background/70 px-3 py-2 text-sm text-muted-foreground whitespace-pre-line">
-                                                {autoConfig.nextStep || '继续根据文档完成'}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-medium">最大循环次数</label>
-                                            <div className="flex gap-2 items-center flex-wrap">
-                                                <Input
-                                                    type="number"
-                                                    min={1}
-                                                    value={autoConfig.maxCycles}
-                                                    disabled={autoConfig.infiniteLoop}
-                                                    className="flex-1 min-w-[110px]"
-                                                    onChange={(e) =>
-                                                        setAutoConfig((prev) => ({
-                                                            ...prev,
-                                                            maxCycles: Math.max(1, Number(e.target.value) || 1),
-                                                        }))
-                                                    }
-                                                />
-                                                <Button
-                                                    type="button"
-                                                    variant={autoConfig.infiniteLoop ? 'default' : 'outline'}
-                                                    size="sm"
-                                                    className="rounded-full whitespace-nowrap"
-                                                    onClick={() =>
-                                                        setAutoConfig((prev) => ({
-                                                            ...prev,
-                                                            infiniteLoop: !prev.infiniteLoop,
-                                                        }))
-                                                    }
-                                                >
-                                                    {autoConfig.infiniteLoop ? '∞ 无限循环' : '开启无限循环'}
-                                                </Button>
-                                            </div>
-                                        </div>
-                                        <div className="space-y-2">
-                                        <label className="text-sm font-medium">完成提醒文案</label>
-                                        <Input
-                                            value={autoConfig.notifyText}
-                                            onChange={(e) =>
-                                                setAutoConfig((prev) => ({ ...prev, notifyText: e.target.value }))
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium">最大循环次数</label>
+                                        <div className="flex gap-2 items-center flex-wrap">
+                                            <Input
+                                                type="number"
+                                                min={1}
+                                                value={autoConfig.maxCycles}
+                                                disabled={autoConfig.infiniteLoop}
+                                                className="flex-1 min-w-[110px]"
+                                                onChange={(e) =>
+                                                    setAutoConfig((prev) => ({
+                                                        ...prev,
+                                                        maxCycles: Math.max(1, Number(e.target.value) || 1),
+                                                    }))
                                                 }
-                                                placeholder="完成后系统通知内容（支持 xxx 或 {task} 占位任务名）"
                                             />
+                                            <Button
+                                                type="button"
+                                                variant={autoConfig.infiniteLoop ? 'default' : 'outline'}
+                                                size="sm"
+                                                className="rounded-full whitespace-nowrap"
+                                                onClick={() =>
+                                                    setAutoConfig((prev) => ({
+                                                        ...prev,
+                                                        infiniteLoop: !prev.infiniteLoop,
+                                                    }))
+                                                }
+                                            >
+                                                {autoConfig.infiniteLoop ? '∞ 无限循环' : '开启无限循环'}
+                                            </Button>
                                         </div>
                                     </div>
                                         <div className="flex items-center justify-between gap-2">
