@@ -496,27 +496,33 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
             setError(null);
             setIsLoading(false);
             setIsMessagesLoading(true);
+
+            // 关键修复：在异步恢复之前，立即重置会话相关状态为默认值
+            // 防止在 restoreSessionState 等待期间，其他会话的状态更新触发重渲染时显示旧数据
+            const tempDefault = createDefaultSessionState(resolveRootId(sessionId), mode, sessionId);
+            setDocBasePath(tempDefault.docBasePath);
+            setDocFiles([]);
+            setAutoConfig(tempDefault.autoConfig);
+            setAutoPromptLogs([]);
+            setCycleLogs({});
+            setLastCycleMs(null);
+            setSessionElapsedMs(0);
+            setRootElapsedMap({});
+            setAutoStatus('');
+            setAutoCycle(1);
+            setAutoTargetSessionId(null);
+            setAutoRunning(false);
+            setAutoAbort(false);
+            setPendingPrefill(undefined);
+            setCurrentCycleStart(null);
+
             const restored = await restoreSessionState(sessionId);
             if (!restored) {
                 if (cancelled) return;
-                const fallback = createDefaultSessionState(resolveRootId(sessionId), mode, sessionId);
-                sessionStateRef.current[sessionId] = fallback;
+                // 状态已在上面重置为默认值，这里只需更新 ref 和标记
+                sessionStateRef.current[sessionId] = tempDefault;
                 markSessionHydrated(sessionId);
                 setStateVersion((v) => v + 1);
-                setDocBasePath(fallback.docBasePath);
-                setDocFiles([]);
-                setAutoConfig(fallback.autoConfig);
-                setAutoPromptLogs(fallback.autoPromptLogs);
-                setCycleLogs(fallback.cycleLogs);
-                setLastCycleMs(fallback.lastCycleMs);
-                setSessionElapsedMs(fallback.sessionElapsedMs);
-                setRootElapsedMap(fallback.rootElapsedMap);
-                setAutoStatus(fallback.autoStatus);
-                setAutoCycle(fallback.autoCycle);
-                setAutoTargetSessionId(fallback.autoTargetSessionId);
-                setAutoRunning(fallback.autoRunning);
-                setAutoAbort(fallback.autoAbort);
-                setPendingPrefill(fallback.pendingPrefill);
             }
 
             if (!cancelled) {
