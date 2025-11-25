@@ -376,40 +376,61 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
     const persistSessionState = async (id: string | null) => {
         if (!id || !isSessionHydrated(id)) return;
         const rootId = resolveRootId(id);
-        const all = { ...sessionStateRef.current };
-        all[id] = {
-            docBasePath,
-            docFiles: docFiles.map(({ path, name, size, relativePath, absPath }) => ({
-                path,
-                name,
-                size,
-                relativePath,
-                absPath,
-            })),
-            autoConfig,
-            autoPromptLogs,
-            cycleLogs,
-            lastCycleMs,
-            sessionElapsedMs,
-            rootElapsedMap,
-            autoStatus,
-            autoCycle,
-            autoTargetSessionId,
-            autoRunning,
-            autoAbort,
-            rootId,
-            pendingPrefill,
-            model,
-            thinkingDepth,
-            mode,
-            currentCycleStart,
-            stateOwnerId: id,
-            stateVersion: 2,
-        };
-        sessionStateRef.current = all;
+
+        // 只有当保存的是当前会话时，才使用 useState hooks 的值
+        // 否则使用 sessionStateRef 中已有的值，避免状态污染
+        const isCurrentSession = id === sessionId;
+        const existingState = sessionStateRef.current[id];
+
+        let stateToSave: SessionUiState;
+        if (isCurrentSession) {
+            // 当前会话：从 useState hooks 获取最新值
+            stateToSave = {
+                docBasePath,
+                docFiles: docFiles.map(({ path, name, size, relativePath, absPath }) => ({
+                    path,
+                    name,
+                    size,
+                    relativePath,
+                    absPath,
+                })),
+                autoConfig,
+                autoPromptLogs,
+                cycleLogs,
+                lastCycleMs,
+                sessionElapsedMs,
+                rootElapsedMap,
+                autoStatus,
+                autoCycle,
+                autoTargetSessionId,
+                autoRunning,
+                autoAbort,
+                rootId,
+                pendingPrefill,
+                model,
+                thinkingDepth,
+                mode,
+                currentCycleStart,
+                stateOwnerId: id,
+                stateVersion: 2,
+            };
+        } else if (existingState) {
+            // 非当前会话：使用 sessionStateRef 中已有的状态
+            stateToSave = {
+                ...existingState,
+                rootId,
+                stateOwnerId: id,
+                stateVersion: 2,
+            };
+        } else {
+            // 没有已有状态，跳过保存
+            return;
+        }
+
+        sessionStateRef.current[id] = stateToSave;
         setStateVersion((v) => v + 1);
         try {
-            await setSessionState(id, JSON.stringify(all[id]));
+            await setSessionState(id, JSON.stringify(stateToSave));
         } catch (err) {
             console.error('保存会话前端状态失败', err);
         }
