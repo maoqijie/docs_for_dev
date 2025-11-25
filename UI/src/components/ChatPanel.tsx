@@ -301,7 +301,11 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
     const [currentCycleStart, setCurrentCycleStart] = useState<number | null>(null);
     const [now, setNow] = useState(Date.now());
     const prevSessionIdRef = useRef<string | null>(null);
+    const currentSessionIdRef = useRef<string>(sessionId); // 用于在异步回调中获取最新的 sessionId
     const hydratedSessionsRef = useRef<Record<string, boolean>>({});
+
+    // 保持 ref 与 prop 同步
+    currentSessionIdRef.current = sessionId;
     const normalizedAutoStatus = useMemo(() => {
         if (!autoStatus) return '';
         const cycleLabel = `第 ${autoCycle} 轮`;
@@ -335,7 +339,8 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
     };
 
     const syncStateToHooks = (id: string) => {
-        if (id !== sessionId) return;
+        // 使用 ref 获取最新的 sessionId，避免闭包问题
+        if (id !== currentSessionIdRef.current) return;
         const state = ensureSessionState(id);
         setDocBasePath(state.docBasePath || '');
         setDocFiles(
@@ -365,7 +370,8 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
         const prev = ensureSessionState(id);
         const next = updater(prev);
         sessionStateRef.current[id] = { ...next, stateOwnerId: id, stateVersion: 2 };
-        if (id === sessionId) {
+        // 使用 ref 获取最新的 sessionId，避免闭包捕获旧值导致状态污染
+        if (id === currentSessionIdRef.current) {
             syncStateToHooks(id);
         }
         setStateVersion((v) => v + 1);
@@ -379,7 +385,8 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
 
         // 只有当保存的是当前会话时，才使用 useState hooks 的值
         // 否则使用 sessionStateRef 中已有的值，避免状态污染
-        const isCurrentSession = id === sessionId;
+        // 使用 ref 获取最新的 sessionId，避免闭包问题
+        const isCurrentSession = id === currentSessionIdRef.current;
         const existingState = sessionStateRef.current[id];
 
         let stateToSave: SessionUiState;
