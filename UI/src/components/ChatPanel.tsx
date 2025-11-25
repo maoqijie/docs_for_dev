@@ -488,6 +488,10 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
     useEffect(() => {
         let cancelled = false;
         (async () => {
+            // 关键修复：先清除新会话的 hydrated 标记
+            // 防止 persistSessionState useEffect 在 setState 生效前错误地将旧会话状态保存到新会话
+            hydratedSessionsRef.current[sessionId] = false;
+
             // 保存上一个会话的前端状态
             await persistSessionState(prevSessionIdRef.current);
 
