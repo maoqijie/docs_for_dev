@@ -672,7 +672,9 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                 state.model || model,
                 state.thinkingDepth || thinkingDepth,
                 (chunk) => {
-                    if (!skipUiInjection && isActive) {
+                    // 每次 chunk 到达时重新检查，避免闭包捕获旧值
+                    const currentlyActive = targetSession === currentSessionIdRef.current;
+                    if (!skipUiInjection && currentlyActive) {
                         setStreamingContent((prev) => prev + chunk);
                     }
                 },
@@ -680,7 +682,9 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
             );
 
             const updated = await getMessages(targetSession);
-            if (!skipUiInjection && isActive) {
+            // 异步完成后重新检查当前会话
+            const stillActive = targetSession === currentSessionIdRef.current;
+            if (!skipUiInjection && stillActive) {
                 setMessages(updated);
                 setStreamingContent('');
             }
@@ -688,12 +692,14 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
             return lastAssistant;
         } catch (err) {
             console.error('发送消息失败:', err);
-            if (isActive) {
+            // 异步完成后重新检查当前会话
+            if (targetSession === currentSessionIdRef.current) {
                 setError(err instanceof Error ? err.message : String(err));
             }
             return null;
         } finally {
-            if (isActive) {
+            // 异步完成后重新检查当前会话
+            if (targetSession === currentSessionIdRef.current) {
                 setIsLoading(false);
                 setIsMessagesLoading(false);
             }
