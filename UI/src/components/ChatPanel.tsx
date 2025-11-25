@@ -641,7 +641,8 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
     ): Promise<Message | null> => {
         const state = ensureSessionState(ownerId);
         const targetSession = targetOverride || ownerId;
-        const isActive = targetSession === sessionId;
+        // 使用 ref 获取最新的 sessionId，避免闭包捕获旧值
+        const isActive = targetSession === currentSessionIdRef.current;
         const userMessage: Message = {
             id: Date.now(),
             session_id: targetSession,
