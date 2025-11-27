@@ -82,6 +82,7 @@ impl PromptTemplateManager {
         let defaults = vec![
             ("check.md", include_str!("../prompts/check.md")),
             ("do.md", include_str!("../prompts/do.md")),
+            ("recheck.md", include_str!("../prompts/recheck.md")),
         ];
 
         for (filename, content) in defaults {
@@ -247,6 +248,7 @@ fn default_description(name: &str) -> String {
     match name {
         "check" => "文档驱动-检查阶段提示词".to_string(),
         "do" => "文档驱动-落地阶段提示词".to_string(),
+        "recheck" => "文档驱动-复查阶段提示词".to_string(),
         _ => format!("{} 提示词模板", name),
     }
 }

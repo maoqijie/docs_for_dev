@@ -1,7 +1,7 @@
 {
   "productName": "Docs_For_Dev",
   "identifier": "com.example.codex-chat",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "build": {
     "beforeBuildCommand": "",
     "beforeDevCommand": "",

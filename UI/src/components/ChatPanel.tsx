@@ -69,6 +69,7 @@ type AutomationConfig = {
     maxCycles: number;
     infiniteLoop: boolean;
     notifyText: string;
+    recheckRounds: number;
 };
 
 type PersistedDocFile = {
@@ -93,6 +94,7 @@ type SessionUiState = {
     autoTargetSessionId: string | null;
     autoRunning: boolean;
     autoAbort: boolean;
+    recheckProgress: number;
     rootId: string;
     pendingPrefill?: string;
     model?: string;
@@ -114,7 +116,24 @@ const defaultAutomationConfig = (): AutomationConfig => ({
     maxCycles: 3,
     infiniteLoop: true,
     notifyText: 'xxx任务已完成',
+    recheckRounds: 3,
 });
+
+const normalizeRecheckRounds = (value?: number) => {
+    const num = Number(value);
+    if (!Number.isFinite(num) || num <= 0) return 3;
+    return Math.max(1, Math.round(num));
+};
+
+const normalizeAutomationConfig = (config?: Partial<AutomationConfig>): AutomationConfig => {
+    const base = defaultAutomationConfig();
+    const merged: AutomationConfig = {
+        ...base,
+        ...config,
+    };
+    merged.recheckRounds = normalizeRecheckRounds(config?.recheckRounds ?? merged.recheckRounds);
+    return merged;
+};
 
 const MODELS = [
     { id: 'gpt-5.1-codex-max', name: 'Codex Max (GPT-5.1)' },
@@ -132,6 +151,8 @@ const THINKING_LEVELS = [
     { id: 'high', name: 'High Effort' },
 ];
 
+const CURRENT_STATE_VERSION = 3;
+
 const createDefaultSessionState = (rootId: string, mode: 'doc-dev' | 'general', ownerId: string): SessionUiState => ({
     docBasePath: '',
     docFiles: [],
@@ -146,6 +167,7 @@ const createDefaultSessionState = (rootId: string, mode: 'doc-dev' | 'general', 
     autoTargetSessionId: null,
     autoRunning: false,
     autoAbort: false,
+    recheckProgress: 0,
     rootId,
     pendingPrefill: undefined,
     model: MODELS[0].id,
@@ -153,7 +175,7 @@ const createDefaultSessionState = (rootId: string, mode: 'doc-dev' | 'general', 
     mode,
     currentCycleStart: null,
     stateOwnerId: ownerId,
-    stateVersion: 2,
+    stateVersion: CURRENT_STATE_VERSION,
 });
 
 const formatBytes = (bytes: number) => {
@@ -299,6 +321,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
     const [sessionElapsedMs, setSessionElapsedMs] = useState(0);
     const [rootElapsedMap, setRootElapsedMap] = useState<Record<string, number>>({});
     const [currentCycleStart, setCurrentCycleStart] = useState<number | null>(null);
+    const [recheckProgress, setRecheckProgress] = useState(0);
     const [now, setNow] = useState(Date.now());
     const prevSessionIdRef = useRef<string | null>(null);
     const currentSessionIdRef = useRef<string>(sessionId); // 用于在异步回调中获取最新的 sessionId
@@ -332,7 +355,27 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
 
     const ensureSessionState = (id: string): SessionUiState => {
         const existing = sessionStateRef.current[id];
-        if (existing) return existing;
+        if (existing) {
+            if (existing.stateVersion !== CURRENT_STATE_VERSION || existing.recheckProgress === undefined) {
+                const upgraded = {
+                    ...createDefaultSessionState(resolveRootId(id), mode, id),
+                    ...existing,
+                    autoConfig: normalizeAutomationConfig(existing.autoConfig),
+                    recheckProgress: existing.recheckProgress ?? 0,
+                    stateOwnerId: id,
+                    stateVersion: CURRENT_STATE_VERSION,
+                };
+                sessionStateRef.current[id] = upgraded;
+                return upgraded;
+            }
+            // 确保 autoConfig 中的新字段有默认值
+            if (existing.autoConfig.recheckRounds === undefined) {
+                const normalized = { ...existing, autoConfig: normalizeAutomationConfig(existing.autoConfig) };
+                sessionStateRef.current[id] = normalized;
+                return normalized;
+            }
+            return existing;
+        }
         const created = createDefaultSessionState(resolveRootId(id), mode, id);
         sessionStateRef.current[id] = created;
         return created;
@@ -349,7 +392,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                 content: '',
             }))
         );
-        setAutoConfig(state.autoConfig || defaultAutomationConfig());
+        setAutoConfig(normalizeAutomationConfig(state.autoConfig));
         setAutoPromptLogs(state.autoPromptLogs || []);
         setCycleLogs(state.cycleLogs || {});
         setLastCycleMs(state.lastCycleMs ?? null);
@@ -360,6 +403,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
         setAutoTargetSessionId(state.autoTargetSessionId || null);
         setAutoRunning(state.autoRunning || false);
         setAutoAbort(state.autoAbort || false);
+        setRecheckProgress(state.recheckProgress ?? 0);
         setPendingPrefill(state.pendingPrefill);
         setModel(state.model || MODELS[0].id);
         setThinkingDepth(state.thinkingDepth || 'xhigh');
@@ -369,7 +413,14 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
     const updateSessionStateEntry = (id: string, updater: (prev: SessionUiState) => SessionUiState) => {
         const prev = ensureSessionState(id);
         const next = updater(prev);
-        sessionStateRef.current[id] = { ...next, stateOwnerId: id, stateVersion: 2 };
+        const normalizedNext: SessionUiState = {
+            ...next,
+            autoConfig: normalizeAutomationConfig(next.autoConfig),
+            recheckProgress: next.recheckProgress ?? 0,
+            stateOwnerId: id,
+            stateVersion: CURRENT_STATE_VERSION,
+        };
+        sessionStateRef.current[id] = normalizedNext;
         // 使用 ref 获取最新的 sessionId，避免闭包捕获旧值导致状态污染
         if (id === currentSessionIdRef.current) {
             syncStateToHooks(id);
@@ -401,7 +452,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                     relativePath,
                     absPath,
                 })),
-                autoConfig,
+                autoConfig: normalizeAutomationConfig(autoConfig),
                 autoPromptLogs,
                 cycleLogs,
                 lastCycleMs,
@@ -412,6 +463,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                 autoTargetSessionId,
                 autoRunning,
                 autoAbort,
+                recheckProgress,
                 rootId,
                 pendingPrefill,
                 model,
@@ -419,15 +471,17 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                 mode,
                 currentCycleStart,
                 stateOwnerId: id,
-                stateVersion: 2,
+                stateVersion: CURRENT_STATE_VERSION,
             };
         } else if (existingState) {
             // 非当前会话：使用 sessionStateRef 中已有的状态
             stateToSave = {
                 ...existingState,
+                autoConfig: normalizeAutomationConfig(existingState.autoConfig),
+                recheckProgress: existingState.recheckProgress ?? 0,
                 rootId,
                 stateOwnerId: id,
-                stateVersion: 2,
+                stateVersion: CURRENT_STATE_VERSION,
             };
         } else {
             // 没有已有状态，跳过保存
@@ -453,11 +507,25 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                     state = JSON.parse(remote) as SessionUiState;
                     // 若发现归属不一致，重置为默认以避免串档
                     const ownerMismatch = state.stateOwnerId && state.stateOwnerId !== id;
-                    const legacyVersion = !state.stateVersion || state.stateVersion < 2;
-                    if (ownerMismatch || legacyVersion) {
+                    const legacyVersion = !state.stateVersion || state.stateVersion < CURRENT_STATE_VERSION;
+                    if (ownerMismatch) {
                         state = createDefaultSessionState(resolveRootId(id), mode, id);
-                    } else if (!state.stateOwnerId) {
-                        state = { ...state, stateOwnerId: id, stateVersion: 2 };
+                    } else {
+                        const merged: SessionUiState = {
+                            ...createDefaultSessionState(resolveRootId(id), mode, id),
+                            ...state,
+                            autoConfig: normalizeAutomationConfig(state.autoConfig),
+                            recheckProgress: state.recheckProgress ?? 0,
+                            stateOwnerId: id,
+                            stateVersion: CURRENT_STATE_VERSION,
+                        };
+                        state = merged;
+                        if (!state.stateOwnerId) {
+                            state = { ...state, stateOwnerId: id, stateVersion: CURRENT_STATE_VERSION };
+                        }
+                        if (legacyVersion) {
+                            state = { ...state, stateVersion: CURRENT_STATE_VERSION };
+                        }
                     }
                     sessionStateRef.current[id] = state;
                     setStateVersion((v) => v + 1);
@@ -471,7 +539,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
 
         const rootId = resolveRootId(id);
         if (!state.rootId) {
-            state = { ...state, rootId, stateOwnerId: id, stateVersion: state.stateVersion || 2 };
+            state = { ...state, rootId, stateOwnerId: id, stateVersion: state.stateVersion || CURRENT_STATE_VERSION };
             sessionStateRef.current[id] = state;
             void setSessionState(id, JSON.stringify(state));
             setStateVersion((v) => v + 1);
@@ -518,6 +586,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
             setAutoRunning(false);
             setAutoAbort(false);
             setPendingPrefill(undefined);
+            setRecheckProgress(0);
             setCurrentCycleStart(null);
 
             const restored = await restoreSessionState(sessionId);
@@ -570,6 +639,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
         autoRunning,
         autoAbort,
         pendingPrefill,
+        recheckProgress,
     ]);
 
     useEffect(() => {
@@ -642,6 +712,20 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
             return normalized === mark;
         });
     };
+
+    const isJsonStatusComplete = (parsedJson: string | null) => {
+        if (!parsedJson) return false;
+        try {
+            const obj = JSON.parse(parsedJson);
+            const status = typeof obj?.status === 'string' ? obj.status.trim().toLowerCase() : '';
+            return ['complete', 'pass', 'passed', 'ok', 'done'].includes(status);
+        } catch {
+            return false;
+        }
+    };
+
+    const isCompletionDetected = (message: Message | null, parsedJson: string | null, signal: string) =>
+        messageHasCompletion(message, signal) || isJsonStatusComplete(parsedJson);
 
     const sendContent = async (
         ownerId: string,
@@ -739,6 +823,14 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                 currentCycleStart: null,
             };
         });
+    };
+
+    const resetRecheckProgress = (ownerId: string) => {
+        updateSessionStateEntry(ownerId, (prev) => ({ ...prev, recheckProgress: 0 }));
+    };
+
+    const setRecheckProgressValue = (ownerId: string, value: number) => {
+        updateSessionStateEntry(ownerId, (prev) => ({ ...prev, recheckProgress: value }));
     };
 
     const appendPromptLog = (ownerId: string, text: string, cycleId?: number) => {
@@ -839,8 +931,9 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
             lastCycleMs: null,
             sessionElapsedMs: 0,
             rootElapsedMap: {},
+            recheckProgress: 0,
             stateOwnerId: ownerId,
-            stateVersion: 2,
+            stateVersion: CURRENT_STATE_VERSION,
         }));
     };
 
@@ -893,6 +986,8 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
         config: AutomationConfig,
         checkResult: string,
         cycleId?: number,
+        stage: 'check' | 'recheck' = 'check',
+        recheckMeta?: { index?: number; total?: number; checkSnapshot?: string },
     ) => {
         const docBlock = buildDocBlockFromState(state);
         const primaryDoc =
@@ -903,7 +998,18 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
         const workdir = state.docBasePath?.trim() || './';
         const workdirHint = buildWorkdirHint(workdir);
         const fixDirective = buildFixDirective(config.completionSignal);
-        const fallback = `${workdirHint}\n${fixDirective}\n\n${config.nextStep || config.taskPrompt}${docBlock ? `\n\n${docBlock}` : ''}\n\n检查结果:\n${checkResult || '（无）'}`;
+        const stageLabel = stage === 'recheck' ? '复查' : '检查';
+        const recheckIndex = recheckMeta?.index;
+        const recheckTotal = recheckMeta?.total;
+        const findingsLabel =
+            stage === 'recheck'
+                ? `复查${recheckTotal ? `(${recheckIndex}/${recheckTotal})` : ''}结果`
+                : '检查结果';
+        const baseCheckSection =
+            stage === 'recheck' && recheckMeta?.checkSnapshot
+                ? `\n\n最近一次检查通过结果(JSON):\n${recheckMeta.checkSnapshot}`
+                : '';
+        const fallback = `${workdirHint}\n${fixDirective}\n\n${config.nextStep || config.taskPrompt}${docBlock ? `\n\n${docBlock}` : ''}\n\n${findingsLabel}:\n${checkResult || '（无）'}${baseCheckSection}`;
         const body = await renderPromptFromTemplate(
             'do',
             {
@@ -911,11 +1017,51 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                 DOCS: docBlock || '（未选择文档，请先选择）',
                 DOC_ABSOLUTE_PATH: primaryDoc || docBlock || '（未选择文档，请先选择）',
                 CHECK_JSON: checkResult || '',
+                BASE_CHECK_JSON: recheckMeta?.checkSnapshot || '',
+                CHECK_STAGE: stageLabel,
+                RECHECK_INDEX: recheckIndex ? String(recheckIndex) : '',
+                RECHECK_TOTAL: recheckTotal ? String(recheckTotal) : '',
                 COMPLETION_SIGNAL: config.completionSignal || '已完全根据文档完成',
             },
             fallback,
         );
         const prompt = `${workdirHint}\n${fixDirective}\n\n${body}`;
+        appendPromptLog(ownerId, prompt, cycleId);
+        return prompt;
+    };
+
+    const buildRecheckPrompt = async (
+        ownerId: string,
+        state: SessionUiState,
+        config: AutomationConfig,
+        checkResult: string,
+        recheckIndex: number,
+        recheckTotal: number,
+        cycleId?: number,
+    ) => {
+        const docBlock = buildDocBlockFromState(state);
+        const primaryDoc =
+            state.docFiles[0]?.absPath ||
+            state.docFiles[0]?.path ||
+            state.docFiles[0]?.relativePath ||
+            '';
+        const workdir = state.docBasePath?.trim() || './';
+        const workdirHint = buildWorkdirHint(workdir);
+        const fallback = `${workdirHint}\n复查轮次: 第 ${recheckIndex}/${recheckTotal}\n请在检查判定完成后再次独立复核，输出 JSON（status=complete|incomplete），列出缺口、证据与修复建议。\n\n最近检查结果:\n${checkResult || '（无）'}${docBlock ? `\n\n${docBlock}` : ''}`;
+        const body = await renderPromptFromTemplate(
+            'recheck',
+            {
+                WORKING_DIR: workdir,
+                DOCS: docBlock || '（未选择文档，请先选择）',
+                DOC_ABSOLUTE_PATH: primaryDoc || docBlock || '（未选择文档，请先选择）',
+                CHECK_JSON: checkResult || '',
+                RECHECK_INDEX: String(recheckIndex),
+                RECHECK_TOTAL: String(recheckTotal),
+                COMPLETION_SIGNAL: config.completionSignal || '已完全根据文档完成',
+            },
+            fallback,
+        );
+        const prompt = `${workdirHint}\n${body}`;
         appendPromptLog(ownerId, prompt, cycleId);
         return prompt;
     };
@@ -932,6 +1078,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
             autoTargetSessionId: null,
             autoRunning: false,
             autoAbort: false,
+            recheckProgress: 0,
         }));
         if (!isTauri()) {
             setError(tauriNotReadyMessage);
@@ -948,7 +1095,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
             appendLog(ownerId, '检测到已有自动循环在运行，本次请求忽略。');
             return;
         }
-        const config = state.autoConfig;
+        const config = normalizeAutomationConfig(state.autoConfig);
         updateSessionStateEntry(ownerId, (prev) => ({
             ...prev,
             autoAbort: false,
@@ -956,6 +1103,8 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
             thinkingDepth,
             mode,
             autoCycle: cycle,
+            autoConfig: config,
+            recheckProgress: 0,
         }));
         try {
             // 若要求每轮新会话，或是重试轮次（cycle > 1 且 autoRestartSession 开启），则创建新会话
@@ -1007,6 +1156,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
             autoRunning: false,
             autoTargetSessionId: null,
             autoStatus: '已手动停止，后续不再发送请求',
+            recheckProgress: 0,
         }));
         if (ownerId === sessionId) {
             setIsLoading(false);
@@ -1018,11 +1168,16 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
     };
 
     const handleAutomationSuccess = (ownerId: string, config: AutomationConfig, cycle: number) => {
+        const recheckNote =
+            normalizeRecheckRounds(config.recheckRounds) > 1
+                ? `，复查 ${normalizeRecheckRounds(config.recheckRounds)} 轮全部通过`
+                : '';
         updateSessionStateEntry(ownerId, (prev) => ({
             ...prev,
-            autoStatus: `检测到完成标记「${config.completionSignal}」，在第 ${cycle} 轮完成。`,
+            autoStatus: `检测到完成标记「${config.completionSignal}」${recheckNote}，在第 ${cycle} 轮完成。`,
             autoRunning: false,
             autoTargetSessionId: null,
+            recheckProgress: normalizeRecheckRounds(config.recheckRounds),
         }));
         notifyCompletion(config.notifyText, sessionTitle);
         appendLog(ownerId, `第 ${cycle} 轮：已完成，输出包含标记「${config.completionSignal}」`, cycle);
@@ -1036,6 +1191,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
             updateSessionStateEntry(ownerId, (prev) => ({
                 ...prev,
                 autoStatus: `第 ${cycle} 轮未完成，准备新建会话继续 ${label}`,
+                recheckProgress: 0,
             }));
             const newSession = await onCreateSession(`文档自动循环 ${next}`, { focus: false });
             if (newSession) {
@@ -1047,6 +1203,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                     ...prev,
                     autoTargetSessionId: newSession.id,
                     autoRunning: false,
+                    recheckProgress: 0,
                 }));
                 await runAutomationCycle(ownerId, next, config);
                 return;
@@ -1057,13 +1214,14 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
             autoStatus: '未检测到完成标记，自动循环已停止',
             autoRunning: false,
             autoTargetSessionId: null,
+            recheckProgress: 0,
         }));
         appendLog(ownerId, `第 ${cycle} 轮：未完成，循环结束`, cycle);
     };
 
     const runAutomationCycle = async (ownerId: string, cycle = 1, configOverride?: AutomationConfig) => {
         const state = ensureSessionState(ownerId);
-        const config = configOverride || state.autoConfig;
+        const config = normalizeAutomationConfig(configOverride || state.autoConfig);
         if (state.autoAbort) {
             updateSessionStateEntry(ownerId, (prev) => ({ ...prev, autoRunning: false, autoStatus: '已停止' }));
             return;
@@ -1073,18 +1231,19 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
             autoRunning: true,
             autoCycle: cycle,
             autoStatus: `第 ${cycle} 轮：发送主查询…`,
+            autoConfig: config,
         }));
         appendLog(ownerId, `第 ${cycle} 轮：开始执行`, cycle);
 
         try {
-            const target = state.autoTargetSessionId || ownerId;
+            const target = ensureSessionState(ownerId).autoTargetSessionId || ownerId;
             const startedAt = Date.now();
-            updateSessionStateEntry(ownerId, (prev) => ({ ...prev, currentCycleStart: startedAt }));
+            updateSessionStateEntry(ownerId, (prev) => ({ ...prev, currentCycleStart: startedAt, autoConfig: config }));
             updateSessionStateEntry(ownerId, (prev) => ({
                 ...prev,
                 autoStatus: `第 ${cycle} 轮：发送检查 (check)…`,
             }));
-            const checkPrompt = await buildCheckPrompt(ownerId, state, config, cycle);
+            const checkPrompt = await buildCheckPrompt(ownerId, ensureSessionState(ownerId), config, cycle);
             const checkReply = await sendContent(
                 ownerId,
                 target,
@@ -1101,55 +1260,129 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
             } else {
                 appendLog(ownerId, `第 ${cycle} 轮检查结果未解析到有效 JSON，原始内容已记录。`, cycle);
             }
-            const checkStatusComplete =
-                parsedCheckJson &&
-                (() => {
-                    try {
-                        const obj = JSON.parse(parsedCheckJson);
-                        return typeof obj?.status === 'string' && obj.status.trim().toLowerCase() === 'complete';
-                    } catch {
-                        return false;
-                    }
-                })();
-            if (messageHasCompletion(checkReply, config.completionSignal) || checkStatusComplete) {
+            const baseCheckResult = parsedCheckJson || checkReply?.content || '';
+            const checkComplete = isCompletionDetected(checkReply, parsedCheckJson, config.completionSignal);
+            if (!checkComplete) {
+                resetRecheckProgress(ownerId);
+                const currentState = ensureSessionState(ownerId);
+                if (currentState.autoAbort) {
+                    updateSessionStateEntry(ownerId, (prev) => ({ ...prev, autoRunning: false, autoStatus: '已停止' }));
+                    appendLog(ownerId, `第 ${cycle} 轮：手动停止，已终止后续请求。`, cycle);
+                    recordElapsed(ownerId, Date.now() - startedAt);
+                    return;
+                }
+
+                updateSessionStateEntry(ownerId, (prev) => ({
+                    ...prev,
+                    autoStatus: `第 ${cycle} 轮：发送落地执行 (do)…`,
+                }));
+                const doPrompt = await buildDoPrompt(
+                    ownerId,
+                    currentState,
+                    config,
+                    baseCheckResult,
+                    cycle,
+                    'check',
+                );
+                const doReply = await sendContent(ownerId, target, doPrompt, true);
+                if (doReply?.content) {
+                    appendLog(ownerId, `第 ${cycle} 轮执行回复：${doReply.content}`, cycle);
+                }
+
+                const latestState = ensureSessionState(ownerId);
+                if (latestState.autoAbort) {
+                    updateSessionStateEntry(ownerId, (prev) => ({ ...prev, autoRunning: false, autoStatus: '已停止' }));
+                    appendLog(ownerId, `第 ${cycle} 轮：手动停止，已终止后续请求。`, cycle);
+                    recordElapsed(ownerId, Date.now() - startedAt);
+                    return;
+                }
+
                 recordElapsed(ownerId, Date.now() - startedAt);
-                handleAutomationSuccess(ownerId, config, cycle);
-                return;
-            }
-            const currentState = ensureSessionState(ownerId);
-            if (currentState.autoAbort) {
-                updateSessionStateEntry(ownerId, (prev) => ({ ...prev, autoRunning: false, autoStatus: '已停止' }));
-                appendLog(ownerId, `第 ${cycle} 轮：手动停止，已终止后续请求。`, cycle);
-                recordElapsed(ownerId, Date.now() - startedAt);
+                await handleAutomationFailure(ownerId, config, cycle);
                 return;
             }
 
+            const recheckTotal = normalizeRecheckRounds(config.recheckRounds);
             updateSessionStateEntry(ownerId, (prev) => ({
                 ...prev,
-                autoStatus: `第 ${cycle} 轮：发送落地执行 (do)…`,
+                autoStatus: `第 ${cycle} 轮：check 通过，进入复查 1/${recheckTotal}…`,
+                recheckProgress: 0,
             }));
-            const doPrompt = await buildDoPrompt(
-                ownerId,
-                state,
-                config,
-                parsedCheckJson || checkReply?.content || '',
-                cycle,
-            );
-            const doReply = await sendContent(ownerId, target, doPrompt, true);
-            if (doReply?.content) {
-                appendLog(ownerId, `第 ${cycle} 轮执行回复：${doReply.content}`, cycle);
-            }
 
-            const latestState = ensureSessionState(ownerId);
-            if (latestState.autoAbort) {
-                updateSessionStateEntry(ownerId, (prev) => ({ ...prev, autoRunning: false, autoStatus: '已停止' }));
-                appendLog(ownerId, `第 ${cycle} 轮：手动停止，已终止后续请求。`, cycle);
+            for (let recheckIndex = 1; recheckIndex <= recheckTotal; recheckIndex++) {
+                const latestState = ensureSessionState(ownerId);
+                if (latestState.autoAbort) {
+                    updateSessionStateEntry(ownerId, (prev) => ({ ...prev, autoRunning: false, autoStatus: '已停止' }));
+                    appendLog(ownerId, `第 ${cycle} 轮：手动停止，已终止后续请求。`, cycle);
+                    recordElapsed(ownerId, Date.now() - startedAt);
+                    return;
+                }
+                updateSessionStateEntry(ownerId, (prev) => ({
+                    ...prev,
+                    autoStatus: `第 ${cycle} 轮：复查 ${recheckIndex}/${recheckTotal}…`,
+                }));
+                const recheckPrompt = await buildRecheckPrompt(
+                    ownerId,
+                    latestState,
+                    config,
+                    baseCheckResult,
+                    recheckIndex,
+                    recheckTotal,
+                    cycle,
+                );
+                const recheckReply = await sendContent(ownerId, target, recheckPrompt, true);
+                if (recheckReply?.content) {
+                    appendLog(ownerId, `第 ${cycle} 轮复查(${recheckIndex}/${recheckTotal})回复：${recheckReply.content}`, cycle);
+                }
+                const parsedRecheckJson = recheckReply?.content ? extractFirstJson(recheckReply.content) : null;
+                if (parsedRecheckJson) {
+                    appendLog(ownerId, `第 ${cycle} 轮复查(${recheckIndex}/${recheckTotal})结果(JSON)：\n${parsedRecheckJson}`, cycle);
+                } else {
+                    appendLog(ownerId, `第 ${cycle} 轮复查(${recheckIndex}/${recheckTotal})未解析到有效 JSON，原始内容已记录。`, cycle);
+                }
+
+                const recheckComplete = isCompletionDetected(recheckReply, parsedRecheckJson, config.completionSignal);
+                if (recheckComplete) {
+                    setRecheckProgressValue(ownerId, recheckIndex);
+                    if (recheckIndex === recheckTotal) {
+                        recordElapsed(ownerId, Date.now() - startedAt);
+                        handleAutomationSuccess(ownerId, config, cycle);
+                        return;
+                    }
+                    continue;
+                }
+
+                resetRecheckProgress(ownerId);
+                const abortState = ensureSessionState(ownerId);
+                if (abortState.autoAbort) {
+                    updateSessionStateEntry(ownerId, (prev) => ({ ...prev, autoRunning: false, autoStatus: '已停止' }));
+                    appendLog(ownerId, `第 ${cycle} 轮：手动停止，已终止后续请求。`, cycle);
+                    recordElapsed(ownerId, Date.now() - startedAt);
+                    return;
+                }
+
+                updateSessionStateEntry(ownerId, (prev) => ({
+                    ...prev,
+                    autoStatus: `第 ${cycle} 轮：复查 ${recheckIndex}/${recheckTotal} 未通过，发送落地执行 (do)…`,
+                }));
+                const doPrompt = await buildDoPrompt(
+                    ownerId,
+                    abortState,
+                    config,
+                    parsedRecheckJson || recheckReply?.content || baseCheckResult,
+                    cycle,
+                    'recheck',
+                    { index: recheckIndex, total: recheckTotal, checkSnapshot: baseCheckResult },
+                );
+                const doReply = await sendContent(ownerId, target, doPrompt, true);
+                if (doReply?.content) {
+                    appendLog(ownerId, `第 ${cycle} 轮执行回复：${doReply.content}`, cycle);
+                }
+
                 recordElapsed(ownerId, Date.now() - startedAt);
+                await handleAutomationFailure(ownerId, config, cycle);
                 return;
             }
-
-            recordElapsed(ownerId, Date.now() - startedAt);
-            await handleAutomationFailure(ownerId, config, cycle);
         } catch (err) {
             console.error('自动执行失败:', err);
             const msg = err instanceof Error ? err.message : String(err);
@@ -1377,8 +1610,8 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                                         </div>
                                     </div>
                                     <div className="text-sm text-muted-foreground space-y-1">
-                                        <p>系统会自动注入 check / do 模板及文档列表、检查结果，无需手动填写任务提示。</p>
-                                        <p>如需调整提示词，请前往模板编辑器修改 check / do 内容。</p>
+                                        <p>系统会自动注入 check / recheck / do 模板及文档列表、检查/复查结果，无需手动填写任务提示。</p>
+                                        <p>如需调整提示词，请前往模板编辑器修改 check / recheck / do 内容。</p>
                                     </div>
                                 </div>
                             </div>
@@ -1417,14 +1650,34 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                                             </Button>
                                         </div>
                                     </div>
-                                        <div className="flex items-center justify-between gap-2">
-                                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                                <Repeat className="h-4 w-4" />
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium">复查轮次</label>
+                                        <div className="flex gap-2 items-center flex-wrap">
+                                            <Input
+                                                type="number"
+                                                min={1}
+                                                value={autoConfig.recheckRounds}
+                                                className="flex-1 min-w-[110px]"
+                                                onChange={(e) =>
+                                                    setAutoConfig((prev) => ({
+                                                        ...prev,
+                                                        recheckRounds: Math.max(1, Number(e.target.value) || 1),
+                                                    }))
+                                                }
+                                            />
+                                            <span className="text-xs text-muted-foreground">
+                                                check 通过后依次复查，任意未通过会回到 do 修复并重置复查计数
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                            <Repeat className="h-4 w-4" />
                                             {autoConfig.autoRestartSession
                                                 ? '每轮都会新建会话并在未完成时继续循环'
                                                 : '未完成时停止自动循环'}
-                                            </div>
-                                            <Button
+                                        </div>
+                                        <Button
                                             variant="outline"
                                             size="sm"
                                             className={cn('rounded-full border', autoConfig.autoRestartSession && 'border-primary text-primary')}

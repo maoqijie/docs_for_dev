@@ -6,7 +6,7 @@
 
 基于 Tauri 2 + Rust + React 构建的跨平台开发助手
 
-[![Version](https://img.shields.io/badge/version-1.0.1-blue.svg)](https://github.com/yourusername/docs-for-dev)
+[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](https://github.com/yourusername/docs-for-dev)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Tauri](https://img.shields.io/badge/Tauri-2.0-orange.svg)](https://tauri.app/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
@@ -268,14 +268,14 @@ cargo tauri build
 构建完成后，安装包位于 `Backend/src-tauri/target/release/bundle/`：
 
 #### Linux
-- **AppImage**: `codex-chat_1.0.1_amd64.AppImage`（便携版）
-- **Deb**: `codex-chat_1.0.1_amd64.deb`（Debian/Ubuntu）
+- **AppImage**: `codex-chat_1.1.0_amd64.AppImage`（便携版）
+- **Deb**: `codex-chat_1.1.0_amd64.deb`（Debian/Ubuntu）
 
 #### Windows
-- **MSI**: `Codex Chat_1.0.1_x64_en-US.msi`
+- **MSI**: `Codex Chat_1.1.0_x64_en-US.msi`
 
 #### macOS
-- **DMG**: `Codex Chat_1.0.1_x64.dmg`
+- **DMG**: `Codex Chat_1.1.0_x64.dmg`
 - **App**: `Codex Chat.app`
 
 ## ⚙️ 配置说明
@@ -296,7 +296,7 @@ cargo tauri build
 {
   "productName": "Codex Chat",           // 应用名称
   "identifier": "com.example.codex-chat", // Bundle ID
-  "version": "1.0.1",                     // 版本号
+  "version": "1.1.0",                     // 版本号
   "build": {
     "frontendDist": "../../UI/dist",      // 前端构建产物路径
     "devUrl": "http://localhost:5173"     // 开发服务器地址

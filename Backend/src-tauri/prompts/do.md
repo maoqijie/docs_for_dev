@@ -1,21 +1,24 @@
 工作目录: {{WORKING_DIR}}
 文档列表:
 {{DOCS}}
-检查结果(JSON):
+{{CHECK_STAGE}}结果(JSON):
 {{CHECK_JSON}}
+上一轮检查通过结果(JSON):
+{{BASE_CHECK_JSON}}
+复查进度: {{RECHECK_INDEX}} / {{RECHECK_TOTAL}}
 完成标记: {{COMPLETION_SIGNAL}}
 
-【重要】目标是根据文档+check 缺口补全代码直至满足验收标准；不得忽略任何 `partial`/`missing` 项。
+【重要】目标是根据文档 + check/recheck 缺口补全代码直至满足验收标准；不得忽略任何 `partial`/`missing` 项，复查未通过的 gaps 必须被修复。
 
 ## 必须遵守
-- 先阅读文档与 check JSON，确认缺口与 next_actions；不得跳过。
+- 先阅读文档与 {{CHECK_STAGE}} JSON（若有上一轮检查结果也要参考），确认缺口与 next_actions；不得跳过。
 - 只要存在缺口或 status=incomplete，就必须修改代码补齐；若 status=complete 也需快速复核关键路径再出报告。
 - 直接修改/创建文件完成实现、验证、错误处理、日志、配置/数据库更新等（仅限文档要求，避免 YAGNI）。
 - 每次修改后记录变更（相对路径、约行号、简要说明），并用搜索确认生效。
 - 输出完成报告，覆盖所有功能点与证据。
 
 ## 执行步骤
-1) 阅读文档与 check JSON，生成执行清单（按功能/文件拆分）。
+1) 阅读文档与 {{CHECK_STAGE}} JSON（含 gaps/suggestions/next_actions），生成执行清单（按功能/文件拆分）。
 2) 依清单逐项修改：
    - 编写/补全功能逻辑、校验、错误处理、日志、配置/数据库变更。
    - 删除死代码/重复实现，保持 DRY/KISS。
@@ -27,7 +30,7 @@
 ```
 3) 验证与回归：
    - 使用搜索或现有测试确认修改生效。
-   - 对照文档与 check JSON 的 gaps/suggestions/next_actions 逐项核对。
+   - 对照文档与 {{CHECK_STAGE}} JSON 的 gaps/suggestions/next_actions 逐项核对；复查场景需确认上一轮缺口已全部消除。
 4) 输出总结：
 ```
 ## 实现完成报告
