@@ -1321,6 +1321,36 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                     ...prev,
                     autoStatus: `第 ${cycle} 轮：复查 ${recheckIndex}/${recheckTotal}…`,
                 }));
+                let recheckTarget = target;
+                if (onCreateSession) {
+                    updateSessionStateEntry(ownerId, (prev) => ({
+                        ...prev,
+                        autoStatus: `第 ${cycle} 轮：复查 ${recheckIndex}/${recheckTotal}，创建新会话…`,
+                    }));
+                    try {
+                        const newSession = await onCreateSession(`文档复查 ${cycle}-${recheckIndex}`, { focus: false });
+                        if (newSession) {
+                            if (onMarkSessionRoot) {
+                                const root = resolveRootId(ownerId);
+                                onMarkSessionRoot(newSession.id, root);
+                            }
+                            recheckTarget = newSession.id;
+                            updateSessionStateEntry(ownerId, (prev) => ({
+                                ...prev,
+                                autoTargetSessionId: newSession.id,
+                                autoStatus: `第 ${cycle} 轮：复查 ${recheckIndex}/${recheckTotal}…`,
+                            }));
+                        } else {
+                            appendLog(ownerId, `第 ${cycle} 轮复查(${recheckIndex}/${recheckTotal})：创建新会话失败，继续使用当前会话`, cycle);
+                        }
+                    } catch (err) {
+                        appendLog(
+                            ownerId,
+                            `第 ${cycle} 轮复查(${recheckIndex}/${recheckTotal})：创建新会话异常 ${err instanceof Error ? err.message : String(err)}，继续使用当前会话`,
+                            cycle,
+                        );
+                    }
+                }
                 const recheckPrompt = await buildRecheckPrompt(
                     ownerId,
                     latestState,
@@ -1330,7 +1360,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                     recheckTotal,
                     cycle,
                 );
-                const recheckReply = await sendContent(ownerId, target, recheckPrompt, true);
+                const recheckReply = await sendContent(ownerId, recheckTarget, recheckPrompt, true);
                 if (recheckReply?.content) {
                     appendLog(ownerId, `第 ${cycle} 轮复查(${recheckIndex}/${recheckTotal})回复：${recheckReply.content}`, cycle);
                 }
@@ -1374,7 +1404,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                     'recheck',
                     { index: recheckIndex, total: recheckTotal, checkSnapshot: baseCheckResult },
                 );
-                const doReply = await sendContent(ownerId, target, doPrompt, true);
+                const doReply = await sendContent(ownerId, recheckTarget, doPrompt, true);
                 if (doReply?.content) {
                     appendLog(ownerId, `第 ${cycle} 轮执行回复：${doReply.content}`, cycle);
                 }
