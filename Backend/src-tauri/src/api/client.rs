@@ -107,9 +107,11 @@ impl CodexClient {
             .stdout(Stdio::piped());
 
         if let Some(depth) = thinking_depth {
-            command
-                .arg("-c")
-                .arg(format!("model_reasoning_effort=\"{}\"", depth));
+            if depth != "xhigh" {
+                command
+                    .arg("-c")
+                    .arg(format!("model_reasoning_effort=\"{}\"", depth));
+            }
         }
 
         let mut child = command

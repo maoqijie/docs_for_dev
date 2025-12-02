@@ -135,6 +135,11 @@ const normalizeAutomationConfig = (config?: Partial<AutomationConfig>): Automati
     return merged;
 };
 
+const normalizeThinkingDepth = (depth?: string) => {
+    const valid = ['minimal', 'low', 'medium', 'high', 'xhigh'];
+    return valid.includes(depth || '') ? depth : 'xhigh';
+};
+
 const MODELS = [
     { id: 'gpt-5.1-codex-max', name: 'Codex Max (GPT-5.1)' },
     { id: 'gpt-5.1-codex-mini', name: 'Codex Mini (GPT-5.1)' },
@@ -149,6 +154,7 @@ const THINKING_LEVELS = [
     { id: 'low', name: 'Low Effort' },
     { id: 'medium', name: 'Medium Effort' },
     { id: 'high', name: 'High Effort' },
+    { id: 'xhigh', name: 'Extra High Effort' },
 ];
 
 const CURRENT_STATE_VERSION = 3;
@@ -171,7 +177,7 @@ const createDefaultSessionState = (rootId: string, mode: 'doc-dev' | 'general', 
     rootId,
     pendingPrefill: undefined,
     model: MODELS[0].id,
-    thinkingDepth: 'high',
+    thinkingDepth: 'xhigh',
     mode,
     currentCycleStart: null,
     stateOwnerId: ownerId,
@@ -518,6 +524,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                             recheckProgress: state.recheckProgress ?? 0,
                             stateOwnerId: id,
                             stateVersion: CURRENT_STATE_VERSION,
+                            thinkingDepth: normalizeThinkingDepth(state.thinkingDepth),
                         };
                         state = merged;
                         if (!state.stateOwnerId) {
