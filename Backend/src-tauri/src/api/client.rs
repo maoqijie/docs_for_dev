@@ -20,11 +20,12 @@ pub struct ChatMessage {
 
 pub struct CodexClient {
     model: String,
+    executable_path: String,
 }
 
 impl CodexClient {
-    pub fn new(_api_key: String, _api_endpoint: String, model: String) -> Self {
-        Self { model }
+    pub fn new(_api_key: String, _api_endpoint: String, model: String, executable_path: String) -> Self {
+        Self { model, executable_path }
     }
 
     pub async fn chat_stream<F>(
@@ -41,64 +42,14 @@ impl CodexClient {
         let prompt = build_prompt(messages);
 
         log_info(&format!(
-            "准备调用 codex，model={}，working_dir={:?}，prompt-preview={}",
+            "准备调用 codex，path={}，model={}，working_dir={:?}，prompt-preview={}",
+            self.executable_path,
             model_override.clone().unwrap_or_else(|| self.model.clone()),
             working_dir,
             prompt.chars().take(80).collect::<String>()
         ));
 
-        // 显式扩展 PATH，解决 GUI 环境下（如 AppImage）PATH 不完整导致找不到 codex 的问题
-        let current_path = std::env::var("PATH").unwrap_or_default();
-
-        #[cfg(target_os = "windows")]
-        let (home_var, separator) = ("USERPROFILE", ";");
-        #[cfg(not(target_os = "windows"))]
-        let (home_var, separator) = ("HOME", ":");
-
-        let home = std::env::var(home_var).unwrap_or_default();
-        let mut common_paths = Vec::new();
-
-        #[cfg(not(target_os = "windows"))]
-        {
-            common_paths.extend([
-                format!("{}/.local/bin", home),
-                format!("{}/.cargo/bin", home),
-                format!("{}/.bun/bin", home),
-                "/usr/local/bin".to_string(),
-                "/usr/bin".to_string(),
-                "/bin".to_string(),
-                "/opt/homebrew/bin".to_string(), // macOS
-            ]);
-        }
-
-        #[cfg(target_os = "windows")]
-        {
-            common_paths.extend([
-                format!("{}\\.cargo\\bin", home),
-                format!("{}\\.bun\\bin", home),
-                format!("{}\\AppData\\Roaming\\npm", home),
-                // 如果有其他 Windows 常见安装路径可在此添加
-            ]);
-        }
-
-        let mut new_path_parts = Vec::new();
-        // 先加入现有 PATH
-        if !current_path.is_empty() {
-            new_path_parts.push(current_path.clone());
-        }
-        // 再加入常见路径（如果尚未存在）
-        for p in common_paths {
-            // 简单去重检查
-            if !current_path.contains(&p) {
-                new_path_parts.push(p);
-            }
-        }
-        let extended_path = new_path_parts.join(separator);
-
-        log_info(&format!("Extended PATH={}", extended_path));
-
-        let mut command = Command::new("codex");
-        command.env("PATH", extended_path);
+        let mut command = Command::new(&self.executable_path);
         command
             .arg("exec")
             .arg("--json")

@@ -25,10 +25,15 @@ fn main() {
         .unwrap_or_else(|_| "https://api.openai.com/v1/chat/completions".to_string());
     let model = std::env::var("CODEX_MODEL").unwrap_or_else(|_| "gpt-5.1-codex-max".to_string());
 
+    // 解析 codex 路径
+    let codex_path = api::path_resolver::resolve_codex_path().unwrap_or_else(|| "codex".to_string());
+    println!("Using codex binary at: {}", codex_path);
+
     let codex_client = Arc::new(CodexClient::new(
         api_key.unwrap_or_default(),
         api_endpoint,
         model,
+        codex_path,
     ));
 
     // 初始化提示词模板管理器
