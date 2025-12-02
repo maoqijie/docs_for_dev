@@ -1250,6 +1250,16 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                 checkPrompt,
                 true,
             );
+            if (!checkReply) {
+                updateSessionStateEntry(ownerId, (prev) => ({
+                    ...prev,
+                    autoRunning: false,
+                    autoStatus: 'API 调用失败，已停止',
+                }));
+                appendLog(ownerId, `第 ${cycle} 轮：API 调用失败（Check 阶段），已终止。`, cycle);
+                recordElapsed(ownerId, Date.now() - startedAt);
+                return;
+            }
             if (checkReply?.content) {
                 appendLog(ownerId, `第 ${cycle} 轮检查回复：${checkReply.content}`, cycle);
             }
@@ -1285,6 +1295,16 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                     'check',
                 );
                 const doReply = await sendContent(ownerId, target, doPrompt, true);
+                if (!doReply) {
+                    updateSessionStateEntry(ownerId, (prev) => ({
+                        ...prev,
+                        autoRunning: false,
+                        autoStatus: 'API 调用失败，已停止',
+                    }));
+                    appendLog(ownerId, `第 ${cycle} 轮：API 调用失败（Do 阶段），已终止。`, cycle);
+                    recordElapsed(ownerId, Date.now() - startedAt);
+                    return;
+                }
                 if (doReply?.content) {
                     appendLog(ownerId, `第 ${cycle} 轮执行回复：${doReply.content}`, cycle);
                 }
@@ -1361,6 +1381,16 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                     cycle,
                 );
                 const recheckReply = await sendContent(ownerId, recheckTarget, recheckPrompt, true);
+                if (!recheckReply) {
+                    updateSessionStateEntry(ownerId, (prev) => ({
+                        ...prev,
+                        autoRunning: false,
+                        autoStatus: 'API 调用失败，已停止',
+                    }));
+                    appendLog(ownerId, `第 ${cycle} 轮：API 调用失败（Recheck 阶段），已终止。`, cycle);
+                    recordElapsed(ownerId, Date.now() - startedAt);
+                    return;
+                }
                 if (recheckReply?.content) {
                     appendLog(ownerId, `第 ${cycle} 轮复查(${recheckIndex}/${recheckTotal})回复：${recheckReply.content}`, cycle);
                 }
@@ -1405,6 +1435,16 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                     { index: recheckIndex, total: recheckTotal, checkSnapshot: baseCheckResult },
                 );
                 const doReply = await sendContent(ownerId, recheckTarget, doPrompt, true);
+                if (!doReply) {
+                    updateSessionStateEntry(ownerId, (prev) => ({
+                        ...prev,
+                        autoRunning: false,
+                        autoStatus: 'API 调用失败，已停止',
+                    }));
+                    appendLog(ownerId, `第 ${cycle} 轮：API 调用失败（Recheck-Do 阶段），已终止。`, cycle);
+                    recordElapsed(ownerId, Date.now() - startedAt);
+                    return;
+                }
                 if (doReply?.content) {
                     appendLog(ownerId, `第 ${cycle} 轮执行回复：${doReply.content}`, cycle);
                 }
