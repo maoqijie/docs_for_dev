@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use codex_chat_lib::{
-    api::CodexClient, commands, db::DbManager, prompt_templates::PromptTemplateManager,
+    api::{self, CodexClient}, commands, db::DbManager, prompt_templates::PromptTemplateManager,
 };
 
 fn main() {
