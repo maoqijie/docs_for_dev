@@ -171,7 +171,7 @@ const createDefaultSessionState = (rootId: string, mode: 'doc-dev' | 'general', 
     rootId,
     pendingPrefill: undefined,
     model: MODELS[0].id,
-    thinkingDepth: 'xhigh',
+    thinkingDepth: 'high',
     mode,
     currentCycleStart: null,
     stateOwnerId: ownerId,
@@ -734,8 +734,13 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
         skipUiInjection = false,
     ): Promise<(Message & { error?: string }) | null> => {
         const state = ensureSessionState(ownerId);
-        const targetSession = targetOverride || state.activeSessionId;
-        if (!targetSession || !content.trim()) return null;
+        const targetSession = targetOverride || state.autoTargetSessionId || ownerId;
+        if (!targetSession || !content.trim()) {
+            return {
+                id: 0, session_id: targetSession || '', role: 'assistant', content: '', timestamp: '',
+                error: !targetSession ? '无效的目标会话 ID' : '发送内容不能为空'
+            };
+        }
         // 使用 ref 获取最新的 sessionId，避免闭包捕获旧值
         const isActive = targetSession === currentSessionIdRef.current;
         const userMessage: Message = {
@@ -785,12 +790,16 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
             }
             const lastAssistant = [...updated].reverse().find((m) => m.role === 'assistant') ?? null;
             return lastAssistant;
-        } catch (err) {
+        } catch (err: any) {
             console.error('发送消息失败:', err);
-            // 异步完成后重新检查当前会话
-            if (targetSession === currentSessionIdRef.current) {
-                setError(err instanceof Error ? err.message : String(err));
+            const errorMsg = err.message || String(err);
+
+            // 如果是自动化模式或跳过 UI 注入（通常也是自动化），不弹窗，而是返回错误信息
+            if (state.mode === 'doc-dev' || skipUiInjection) {
+                return { id: 0, session_id: targetSession || '', role: 'assistant', content: '', timestamp: '', error: errorMsg };
             }
+
+            setError(errorMsg);
             return null;
         } finally {
             // 异步完成后重新检查当前会话
