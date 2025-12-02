@@ -50,6 +50,32 @@ impl CodexClient {
         ));
 
         let mut command = Command::new(&self.executable_path);
+
+        // 构建扩展的 PATH 环境变量
+        // 即使我们使用绝对路径调用 codex，codex 内部（如果它是脚本）可能需要调用其他工具（如 bun, node）
+        // 因此我们需要确保 PATH 包含这些工具的路径
+        let current_path = std::env::var("PATH").unwrap_or_default();
+        let common_dirs = super::path_resolver::get_common_directories();
+        
+        #[cfg(target_os = "windows")]
+        let separator = ";";
+        #[cfg(not(target_os = "windows"))]
+        let separator = ":";
+
+        let mut new_path_parts = Vec::new();
+        if !current_path.is_empty() {
+            new_path_parts.push(current_path.clone());
+        }
+        for dir in common_dirs {
+            let dir_str = dir.to_string_lossy().to_string();
+            if !current_path.contains(&dir_str) {
+                new_path_parts.push(dir_str);
+            }
+        }
+        let extended_path = new_path_parts.join(separator);
+        
+        log_info(&format!("Running codex with PATH={}", extended_path));
+        command.env("PATH", extended_path);
         command
             .arg("exec")
             .arg("--json")

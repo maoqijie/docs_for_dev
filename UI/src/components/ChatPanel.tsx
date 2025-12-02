@@ -732,9 +732,10 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
         targetOverride: string | undefined,
         content: string,
         skipUiInjection = false,
-    ): Promise<Message | null> => {
+    ): Promise<(Message & { error?: string }) | null> => {
         const state = ensureSessionState(ownerId);
-        const targetSession = targetOverride || ownerId;
+        const targetSession = targetOverride || state.activeSessionId;
+        if (!targetSession || !content.trim()) return null;
         // 使用 ref 获取最新的 sessionId，避免闭包捕获旧值
         const isActive = targetSession === currentSessionIdRef.current;
         const userMessage: Message = {
@@ -1250,13 +1251,14 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                 checkPrompt,
                 true,
             );
-            if (!checkReply) {
+            if (!checkReply || checkReply.error) {
+                const errorMsg = checkReply?.error || '未知错误';
                 updateSessionStateEntry(ownerId, (prev) => ({
                     ...prev,
                     autoRunning: false,
-                    autoStatus: 'API 调用失败，已停止',
+                    autoStatus: `API 调用失败: ${errorMsg}`,
                 }));
-                appendLog(ownerId, `第 ${cycle} 轮：API 调用失败（Check 阶段），已终止。`, cycle);
+                appendLog(ownerId, `第 ${cycle} 轮：API 调用失败（Check 阶段）: ${errorMsg}，已终止。`, cycle);
                 recordElapsed(ownerId, Date.now() - startedAt);
                 return;
             }
@@ -1295,13 +1297,14 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                     'check',
                 );
                 const doReply = await sendContent(ownerId, target, doPrompt, true);
-                if (!doReply) {
+                if (!doReply || doReply.error) {
+                    const errorMsg = doReply?.error || '未知错误';
                     updateSessionStateEntry(ownerId, (prev) => ({
                         ...prev,
                         autoRunning: false,
-                        autoStatus: 'API 调用失败，已停止',
+                        autoStatus: `API 调用失败: ${errorMsg}`,
                     }));
-                    appendLog(ownerId, `第 ${cycle} 轮：API 调用失败（Do 阶段），已终止。`, cycle);
+                    appendLog(ownerId, `第 ${cycle} 轮：API 调用失败（Do 阶段）: ${errorMsg}，已终止。`, cycle);
                     recordElapsed(ownerId, Date.now() - startedAt);
                     return;
                 }
@@ -1381,13 +1384,14 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                     cycle,
                 );
                 const recheckReply = await sendContent(ownerId, recheckTarget, recheckPrompt, true);
-                if (!recheckReply) {
+                if (!recheckReply || recheckReply.error) {
+                    const errorMsg = recheckReply?.error || '未知错误';
                     updateSessionStateEntry(ownerId, (prev) => ({
                         ...prev,
                         autoRunning: false,
-                        autoStatus: 'API 调用失败，已停止',
+                        autoStatus: `API 调用失败: ${errorMsg}`,
                     }));
-                    appendLog(ownerId, `第 ${cycle} 轮：API 调用失败（Recheck 阶段），已终止。`, cycle);
+                    appendLog(ownerId, `第 ${cycle} 轮：API 调用失败（Recheck 阶段）: ${errorMsg}，已终止。`, cycle);
                     recordElapsed(ownerId, Date.now() - startedAt);
                     return;
                 }
@@ -1435,13 +1439,14 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                     { index: recheckIndex, total: recheckTotal, checkSnapshot: baseCheckResult },
                 );
                 const doReply = await sendContent(ownerId, recheckTarget, doPrompt, true);
-                if (!doReply) {
+                if (!doReply || doReply.error) {
+                    const errorMsg = doReply?.error || '未知错误';
                     updateSessionStateEntry(ownerId, (prev) => ({
                         ...prev,
                         autoRunning: false,
-                        autoStatus: 'API 调用失败，已停止',
+                        autoStatus: `API 调用失败: ${errorMsg}`,
                     }));
-                    appendLog(ownerId, `第 ${cycle} 轮：API 调用失败（Recheck-Do 阶段），已终止。`, cycle);
+                    appendLog(ownerId, `第 ${cycle} 轮：API 调用失败（Recheck-Do 阶段）: ${errorMsg}，已终止。`, cycle);
                     recordElapsed(ownerId, Date.now() - startedAt);
                     return;
                 }

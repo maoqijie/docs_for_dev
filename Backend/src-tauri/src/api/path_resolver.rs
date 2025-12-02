@@ -75,6 +75,30 @@ fn is_executable(path: &Path) -> bool {
     path.exists()
 }
 
+pub fn get_common_directories() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    if let Some(home) = dirs::home_dir() {
+        #[cfg(unix)]
+        {
+            dirs.push(home.join(".local/bin"));
+            dirs.push(home.join(".cargo/bin"));
+            dirs.push(home.join(".bun/bin"));
+            dirs.push(PathBuf::from("/usr/local/bin"));
+            dirs.push(PathBuf::from("/usr/bin"));
+            dirs.push(PathBuf::from("/bin"));
+            dirs.push(PathBuf::from("/opt/homebrew/bin"));
+        }
+
+        #[cfg(windows)]
+        {
+            dirs.push(home.join(".cargo\\bin"));
+            dirs.push(home.join(".bun\\bin"));
+            dirs.push(home.join("AppData\\Roaming\\npm"));
+        }
+    }
+    dirs
+}
+
 fn get_common_paths(home: &Path) -> Vec<PathBuf> {
     let mut paths = Vec::new();
     
