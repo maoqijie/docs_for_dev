@@ -34,6 +34,7 @@ impl CodexClient {
         model_override: Option<String>,
         thinking_depth: Option<String>,
         working_dir: Option<String>,
+        use_config_file: Option<bool>,
         mut on_chunk: F,
     ) -> Result<String>
     where
@@ -42,10 +43,11 @@ impl CodexClient {
         let prompt = build_prompt(messages);
 
         log_info(&format!(
-            "准备调用 codex，path={}，model={}，working_dir={:?}，prompt-preview={}",
+            "准备调用 codex，path={}，model={}，working_dir={:?}，use_config_file={:?}，prompt-preview={}",
             self.executable_path,
             model_override.clone().unwrap_or_else(|| self.model.clone()),
             working_dir,
+            use_config_file,
             prompt.chars().take(80).collect::<String>()
         ));
 
@@ -78,9 +80,16 @@ impl CodexClient {
         command.env("PATH", extended_path);
         command
             .arg("exec")
-            .arg("--json")
-            .arg("--model")
-            .arg(model_override.unwrap_or_else(|| self.model.clone()))
+            .arg("--json");
+
+        // 如果不使用配置文件，则强制指定模型
+        if !use_config_file.unwrap_or(false) {
+             command
+                .arg("--model")
+                .arg(model_override.unwrap_or_else(|| self.model.clone()));
+        }
+
+        command
             .arg("--sandbox")
             .arg("danger-full-access")
             .arg("--skip-git-repo-check");
@@ -106,11 +115,14 @@ impl CodexClient {
             .stderr(Stdio::piped())
             .stdout(Stdio::piped());
 
-        if let Some(depth) = thinking_depth {
-            if depth != "xhigh" {
-                command
-                    .arg("-c")
-                    .arg(format!("model_reasoning_effort=\"{}\"", depth));
+        // 如果不使用配置文件，则注入思考深度参数
+        if !use_config_file.unwrap_or(false) {
+            if let Some(depth) = thinking_depth {
+                if depth != "xhigh" {
+                    command
+                        .arg("-c")
+                        .arg(format!("model_reasoning_effort=\"{}\"", depth));
+                }
             }
         }
 
@@ -220,7 +232,7 @@ impl CodexClient {
     pub async fn chat(&self, messages: Vec<ChatMessage>) -> Result<String> {
         let mut buffer = String::new();
         let _ = self
-            .chat_stream(messages, None, None, None, |chunk| buffer.push_str(&chunk))
+            .chat_stream(messages, None, None, None, None, |chunk| buffer.push_str(&chunk))
             .await?;
         Ok(buffer)
     }

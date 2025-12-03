@@ -55,12 +55,14 @@ pub async fn send_message(
     model: Option<String>,
     thinking_depth: Option<String>,
     working_dir: Option<String>,
+    use_config_file: Option<bool>,
 ) -> Result<(), String> {
     println!(
-        "[commands] send_message session_id={} content_preview={} working_dir={:?}",
+        "[commands] send_message session_id={} content_preview={} working_dir={:?} use_config_file={:?}",
         session_id,
         content.chars().take(80).collect::<String>(),
-        working_dir
+        working_dir,
+        use_config_file
     );
 
     db.add_message(&session_id, "user", &content)
@@ -85,6 +87,7 @@ pub async fn send_message(
             model,
             thinking_depth,
             working_dir,
+            use_config_file,
             move |chunk| {
                 let _ = window_clone.emit("message-chunk", chunk);
             },

@@ -24,7 +24,6 @@ import {
 } from "./ui/select";
 import {
     Sparkles,
-    BrainCircuit,
     Loader2,
     ChevronLeft,
     FilePlus2,
@@ -103,6 +102,7 @@ type SessionUiState = {
     currentCycleStart?: number | null;
     stateOwnerId?: string;
     stateVersion?: number;
+    useConfigFile?: boolean;
 };
 
 const defaultAutomationConfig = (): AutomationConfig => ({
@@ -182,6 +182,7 @@ const createDefaultSessionState = (rootId: string, mode: 'doc-dev' | 'general', 
     currentCycleStart: null,
     stateOwnerId: ownerId,
     stateVersion: CURRENT_STATE_VERSION,
+    useConfigFile: false,
 });
 
 const formatBytes = (bytes: number) => {
@@ -308,6 +309,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
     const [streamingContent, setStreamingContent] = useState('');
     const [model, setModel] = useState(MODELS[0].id);
     const [thinkingDepth, setThinkingDepth] = useState('xhigh');
+    const [useConfigFile, setUseConfigFile] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     const [docFiles, setDocFiles] = useState<DocFile[]>([]);
@@ -413,6 +415,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
         setPendingPrefill(state.pendingPrefill);
         setModel(state.model || MODELS[0].id);
         setThinkingDepth(state.thinkingDepth || 'xhigh');
+        setUseConfigFile(state.useConfigFile || false);
         setCurrentCycleStart(state.currentCycleStart || null);
     };
 
@@ -472,9 +475,10 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                 recheckProgress,
                 rootId,
                 pendingPrefill,
-                model,
-                thinkingDepth,
-                mode,
+                model: existingState?.model ?? model,
+                thinkingDepth: existingState?.thinkingDepth ?? thinkingDepth,
+                mode: existingState?.mode ?? mode,
+                useConfigFile: existingState?.useConfigFile ?? useConfigFile,
                 currentCycleStart,
                 stateOwnerId: id,
                 stateVersion: CURRENT_STATE_VERSION,
@@ -525,6 +529,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                             stateOwnerId: id,
                             stateVersion: CURRENT_STATE_VERSION,
                             thinkingDepth: normalizeThinkingDepth(state.thinkingDepth),
+                            useConfigFile: state.useConfigFile ?? false,
                         };
                         state = merged;
                         if (!state.stateOwnerId) {
@@ -786,6 +791,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                     }
                 },
                 state.mode === 'doc-dev' ? state.docBasePath : undefined,
+                state.useConfigFile
             );
 
             const updated = await getMessages(targetSession);
@@ -1487,10 +1493,6 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
         }
     };
 
-    const currentThinkingLevels = model === 'gpt-5.1-codex-max'
-        ? [...THINKING_LEVELS, { id: 'xhigh', name: 'Extra High Effort' }]
-        : THINKING_LEVELS;
-
     // 仅在主动发送/流式时显示顶部加载，不因历史加载闪烁
     const showTopLoader = isLoading || !!streamingContent;
 
@@ -1502,37 +1504,45 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
         >
             <div className="w-full px-4 pt-3">
                 <div className="flex flex-wrap gap-2 items-center">
-                    <Select value={model} onValueChange={setModel}>
-                        <SelectTrigger className="w-[220px] bg-background/80 backdrop-blur-sm shadow-sm border-border/50 rounded-full h-9 px-4 transition-all hover:bg-accent/50">
-                            <div className="flex items-center gap-2 truncate">
-                                <Sparkles className="h-3.5 w-3.5 text-primary flex-shrink-0" />
+                    <div className="flex items-center gap-2">
+                        <Select
+                            value={sessionStateRef.current[sessionId]?.model || MODELS[0].id}
+                            onValueChange={(val) =>
+                                updateSessionStateEntry(sessionId, (prev) => ({ ...prev, model: val }))
+                            }
+                            disabled={useConfigFile}
+                        >
+                            <SelectTrigger className="w-[180px]">
                                 <SelectValue placeholder="选择模型" />
-                            </div>
-                        </SelectTrigger>
-                        <SelectContent>
-                            {MODELS.map((m) => (
-                                <SelectItem key={m.id} value={m.id} className="cursor-pointer">
-                                    {m.name}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
+                            </SelectTrigger>
+                            <SelectContent>
+                                {MODELS.map((m) => (
+                                    <SelectItem key={m.id} value={m.id}>
+                                        {m.name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
 
-                    <Select value={thinkingDepth} onValueChange={setThinkingDepth}>
-                        <SelectTrigger className="w-[160px] bg-background/80 backdrop-blur-sm shadow-sm border-border/50 rounded-full h-9 px-4 transition-all hover:bg-accent/50">
-                            <div className="flex items-center gap-2">
-                                <BrainCircuit className="h-3.5 w-3.5 text-purple-500" />
+                        <Select
+                            value={sessionStateRef.current[sessionId]?.thinkingDepth || 'high'}
+                            onValueChange={(val) =>
+                                updateSessionStateEntry(sessionId, (prev) => ({ ...prev, thinkingDepth: val }))
+                            }
+                            disabled={useConfigFile}
+                        >
+                            <SelectTrigger className="w-[140px]">
                                 <SelectValue placeholder="思考深度" />
-                            </div>
-                        </SelectTrigger>
-                        <SelectContent>
-                            {currentThinkingLevels.map((l) => (
-                                <SelectItem key={l.id} value={l.id} className="cursor-pointer">
-                                    {l.name}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
+                            </SelectTrigger>
+                            <SelectContent>
+                                {THINKING_LEVELS.map((l) => (
+                                    <SelectItem key={l.id} value={l.id}>
+                                        {l.name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
                 </div>
             </div>
 
@@ -1703,6 +1713,28 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                                     <div className="text-sm text-muted-foreground space-y-1">
                                         <p>系统会自动注入 check / recheck / do 模板及文档列表、检查/复查结果，无需手动填写任务提示。</p>
                                         <p>如需调整提示词，请前往模板编辑器修改 check / recheck / do 内容。</p>
+
+                                        <div className="flex items-center space-x-2 mt-4">
+                                            <button
+                                                type="button"
+                                                role="switch"
+                                                aria-checked={useConfigFile}
+                                                onClick={() => {
+                                                    updateSessionStateEntry(sessionId, (prev) => ({
+                                                        ...prev,
+                                                        useConfigFile: !prev.useConfigFile,
+                                                    }));
+                                                }}
+                                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${useConfigFile ? 'bg-primary' : 'bg-gray-200'
+                                                    }`}
+                                            >
+                                                <span
+                                                    className={`pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform ${useConfigFile ? 'translate-x-5' : 'translate-x-0'
+                                                        }`}
+                                                />
+                                            </button>
+                                            <span className="text-sm font-medium">使用配置文件配置 (codex config)</span>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
