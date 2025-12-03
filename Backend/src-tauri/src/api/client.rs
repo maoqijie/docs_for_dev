@@ -124,6 +124,13 @@ impl CodexClient {
                         .arg(format!("model_reasoning_effort=\"{}\"", depth));
                 }
             }
+        } else {
+            // 如果使用配置文件，检查其中是否包含无效的 xhigh
+            // 如果包含，强制覆盖为 high，防止 CLI 崩溃
+            if check_config_for_xhigh() {
+                log_info("检测到配置文件包含无效的 'xhigh'，强制覆盖为 'high'");
+                command.arg("-c").arg("model_reasoning_effort=\"high\"");
+            }
         }
 
         let mut child = command
@@ -244,4 +251,19 @@ fn build_prompt(messages: Vec<ChatMessage>) -> String {
         .map(|m| format!("{}: {}", m.role, m.content))
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+fn check_config_for_xhigh() -> bool {
+    if let Ok(home) = std::env::var("HOME") {
+        let config_path = std::path::PathBuf::from(home).join(".codex/config.toml");
+        if config_path.exists() {
+            if let Ok(content) = std::fs::read_to_string(config_path) {
+                // 简单检查，避免复杂的 TOML 解析
+                if content.contains("model_reasoning_effort") && content.contains("\"xhigh\"") {
+                    return true;
+                }
+            }
+        }
+    }
+    false
 }
