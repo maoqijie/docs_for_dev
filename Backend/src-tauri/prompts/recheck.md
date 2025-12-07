@@ -35,9 +35,9 @@
 
 ### 只读模式
 - **禁止**修改、创建、删除任何文件
-- **允许**执行只读/查询/构建/测试类命令用于验证：
   - 搜索：`rg`, `grep`, `find`, `fd`
   - 读取：`cat`, `head`, `tail`, `less`
+  - 网络（只读）：`curl`, `wget`, `ping` (仅限获取信息，禁止向外发送敏感数据)
   - 构建验证：`npm run build`, `pnpm build`, `cargo check`
   - 测试运行：`npm test`, `pnpm test`, `cargo test`
 - **禁止**写入配置、安装依赖、运行破坏性脚本（所有修复交给 do 阶段）

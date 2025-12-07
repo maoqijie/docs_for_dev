@@ -39,6 +39,7 @@ import {
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
+import { Textarea } from './ui/textarea';
 import { cn } from '../lib/utils';
 
 interface ChatPanelProps {
@@ -70,6 +71,8 @@ type AutomationConfig = {
     infiniteLoop: boolean;
     notifyText: string;
     recheckRounds: number;
+    enableDeploy: boolean;
+    deployInstruction: string;
 };
 
 type PersistedDocFile = {
@@ -117,6 +120,8 @@ const defaultAutomationConfig = (): AutomationConfig => ({
     infiniteLoop: true,
     notifyText: 'xxx任务已完成',
     recheckRounds: 3,
+    enableDeploy: false,
+    deployInstruction: '',
 });
 
 const normalizeRecheckRounds = (value?: number) => {
@@ -1022,6 +1027,8 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                 RECHECK_INDEX: recheckIndex ? String(recheckIndex) : '',
                 RECHECK_TOTAL: recheckTotal ? String(recheckTotal) : '',
                 COMPLETION_SIGNAL: config.completionSignal || '已完全根据文档完成',
+                DEPLOY_INSTRUCTION:
+                    config.enableDeploy && config.deployInstruction ? config.deployInstruction : '（未启用部署，请跳过部署步骤）',
             },
             fallback,
         );
@@ -1696,6 +1703,38 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                                                 check 通过后依次复查，任意未通过会回到 do 修复并重置复查计数
                                             </span>
                                         </div>
+                                    </div>
+                                    <div className="space-y-2 pt-2 border-t">
+                                        <div className="flex items-center justify-between">
+                                            <label className="text-sm font-medium">部署配置</label>
+                                            <div className="flex items-center space-x-2">
+                                                <input
+                                                    type="checkbox"
+                                                    id="enableDeploy"
+                                                    className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary accent-primary"
+                                                    checked={autoConfig.enableDeploy}
+                                                    onChange={(e) =>
+                                                        setAutoConfig((prev) => ({ ...prev, enableDeploy: e.target.checked }))
+                                                    }
+                                                />
+                                                <label
+                                                    htmlFor="enableDeploy"
+                                                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer select-none"
+                                                >
+                                                    在 Do 阶段执行部署
+                                                </label>
+                                            </div>
+                                        </div>
+                                        {autoConfig.enableDeploy && (
+                                            <Textarea
+                                                placeholder="请输入部署指令，如：./deploy.sh prod"
+                                                value={autoConfig.deployInstruction}
+                                                onChange={(e) =>
+                                                    setAutoConfig((prev) => ({ ...prev, deployInstruction: e.target.value }))
+                                                }
+                                                className="min-h-[80px] text-xs font-mono"
+                                            />
+                                        )}
                                     </div>
                                     <div className="flex items-center justify-between gap-2">
                                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
