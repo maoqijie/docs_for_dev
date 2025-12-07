@@ -1034,7 +1034,6 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
         ownerId: string,
         state: SessionUiState,
         config: AutomationConfig,
-        checkResult: string,
         recheckIndex: number,
         recheckTotal: number,
         cycleId?: number,
@@ -1047,14 +1046,13 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
             '';
         const workdir = state.docBasePath?.trim() || './';
         const workdirHint = buildWorkdirHint(workdir);
-        const fallback = `${workdirHint}\n复查轮次: 第 ${recheckIndex}/${recheckTotal}\n请在检查判定完成后再次独立复核，输出 JSON（status=complete|incomplete），列出缺口、证据与修复建议。\n\n最近检查结果:\n${checkResult || '（无）'}${docBlock ? `\n\n${docBlock}` : ''}`;
+        const fallback = `${workdirHint}\n复查轮次: 第 ${recheckIndex}/${recheckTotal}\n请完全独立地验证代码是否符合文档，输出 JSON（status=complete|incomplete），列出缺口、证据与修复建议。${docBlock ? `\n\n${docBlock}` : ''}`;
         const body = await renderPromptFromTemplate(
             'recheck',
             {
                 WORKING_DIR: workdir,
                 DOCS: docBlock || '（未选择文档，请先选择）',
                 DOC_ABSOLUTE_PATH: primaryDoc || docBlock || '（未选择文档，请先选择）',
-                CHECK_JSON: checkResult || '',
                 RECHECK_INDEX: String(recheckIndex),
                 RECHECK_TOTAL: String(recheckTotal),
                 COMPLETION_SIGNAL: config.completionSignal || '已完全根据文档完成',
@@ -1355,7 +1353,6 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                     ownerId,
                     latestState,
                     config,
-                    baseCheckResult,
                     recheckIndex,
                     recheckTotal,
                     cycle,
