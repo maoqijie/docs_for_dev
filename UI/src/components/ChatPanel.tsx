@@ -1549,19 +1549,19 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
 
                         <div className="grid md:grid-cols-[2fr_1.15fr] gap-4">
                             <div className="space-y-3">
-                                <div className="rounded-2xl border bg-muted/30 p-3 space-y-3">
-                                    <div className="flex items-center justify-between gap-2">
+                                <div className="rounded-2xl border border-border/70 bg-card/70 p-4 space-y-4">
+                                    <div className="flex flex-wrap items-center justify-between gap-3">
                                         <div className="flex items-center gap-2 text-sm font-medium">
                                             <FilePlus2 className="h-4 w-4" />
                                             选择参考文档（可多选，自动插入提示）
                                         </div>
-                                        <div className="flex gap-2">
+                                        <div className="flex gap-2 flex-wrap">
                                             <Button
                                                 variant="ghost"
                                                 size="sm"
                                                 onClick={handlePickDocs}
                                                 disabled={isPickingDocs}
-                                                className="rounded-full"
+                                                className="rounded-full border border-border/60 bg-background/70"
                                             >
                                                 {isPickingDocs ? (
                                                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -1576,7 +1576,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                                                 <Button
                                                     variant="ghost"
                                                     size="sm"
-                                                    className="rounded-full"
+                                                    className="rounded-full border border-border/60 bg-background/70"
                                                     onClick={() => setDocFiles([])}
                                                 >
                                                     清空
@@ -1597,7 +1597,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                                             if (e.target) e.target.value = '';
                                         }}
                                     />
-                                    <div className="flex gap-2 items-center">
+                                    <div className="grid gap-2 md:grid-cols-[1fr_auto_auto_auto]">
                                         <Input
                                             value={docBasePath}
                                             onChange={(e) => setDocBasePath(e.target.value)}
@@ -1615,7 +1615,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                                         >
                                             选择目录
                                         </Button>
-                                        <Button variant="ghost" size="sm" onClick={() => setDocBasePath('')}>
+                                        <Button variant="ghost" size="sm" className="rounded-full border border-border/60 bg-background/70" onClick={() => setDocBasePath('')}>
                                             清空目录
                                         </Button>
                                         <Button
@@ -1627,29 +1627,31 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                                             重置当前会话
                                         </Button>
                                     </div>
-                                    <p className="text-xs text-muted-foreground">发送时会附上工作目录与文件相对路径，便于模型按正确路径引用。</p>
-                                    <div className="flex flex-wrap gap-2 mt-3">
+                                    <p className="text-xs leading-5 text-muted-foreground">发送时会附上工作目录与文件相对路径，便于模型按正确路径引用。</p>
+                                    <div className="space-y-2">
                                         {docFiles.length === 0 && (
-                                            <span className="text-xs text-muted-foreground">尚未选择文档</span>
+                                            <div className="text-xs text-muted-foreground rounded-xl border border-dashed border-border/70 bg-background/50 px-3 py-2">
+                                                尚未选择文档
+                                            </div>
                                         )}
                                         {docFiles.map((doc) => (
                                             <div
                                                 key={doc.path}
-                                                className="group flex items-center gap-2 px-3 py-2 rounded-xl border bg-background/80 shadow-sm"
+                                                className="group grid grid-cols-[1fr_auto_auto] items-center gap-2 px-3 py-2 rounded-xl border border-border/70 bg-background/80 shadow-sm"
                                             >
                                                 <div className="flex flex-col min-w-0">
-                                                    <span className="text-xs font-medium truncate max-w-[180px]">
+                                                    <span className="text-sm font-medium leading-6 truncate">
                                                         {doc.name}
                                                     </span>
-                                                    <span className="text-[10px] text-muted-foreground truncate max-w-[180px]">
+                                                    <span className="text-xs leading-5 text-muted-foreground truncate">
                                                         {doc.relativePath || doc.path}
                                                     </span>
                                                 </div>
-                                                <span className="text-[10px] text-muted-foreground">{formatBytes(doc.size)}</span>
+                                                <span className="text-xs leading-5 text-muted-foreground whitespace-nowrap">{formatBytes(doc.size)}</span>
                                                 <Button
                                                     variant="ghost"
                                                     size="icon"
-                                                    className="h-7 w-7 opacity-0 group-hover:opacity-100"
+                                                    className="h-7 w-7 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                                                     onClick={() => setDocFiles((prev) => prev.filter((item) => item.path !== doc.path))}
                                                 >
                                                     <StopCircle className="h-3.5 w-3.5" />
@@ -1659,7 +1661,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                                     </div>
                                 </div>
 
-                                <div className="rounded-2xl border bg-muted/30 p-4 space-y-2">
+                                <div className="rounded-2xl border border-border/70 bg-card/70 p-4 space-y-3">
                                     <div className="flex items-center justify-between gap-2">
                                         <div className="flex items-center gap-2 text-sm font-medium">
                                             <Wand2 className="h-4 w-4" />
@@ -1677,7 +1679,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                                             </Button>
                                         </div>
                                     </div>
-                                    <div className="text-sm text-muted-foreground space-y-1">
+                                    <div className="text-sm leading-relaxed text-muted-foreground space-y-1">
                                         <p>系统会自动注入 check / recheck / do 模板及文档列表、检查/复查结果，无需手动填写任务提示。</p>
                                         <p>如需调整提示词，请前往模板编辑器修改 check / recheck / do 内容。</p>
                                     </div>
@@ -1685,10 +1687,10 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                             </div>
 
                             <div className="space-y-3">
-                                <div className="rounded-2xl border bg-muted/30 p-4 space-y-3">
+                                <div className="rounded-2xl border border-border/70 bg-card/70 p-4 space-y-4">
                                     <div className="space-y-2">
                                         <label className="text-sm font-medium">最大循环次数</label>
-                                        <div className="flex gap-2 items-center flex-wrap">
+                                        <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 items-center">
                                             <Input
                                                 type="number"
                                                 min={1}
@@ -1720,7 +1722,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                                     </div>
                                     <div className="space-y-2">
                                         <label className="text-sm font-medium">复查轮次</label>
-                                        <div className="flex gap-2 items-center flex-wrap">
+                                        <div className="grid grid-cols-1 gap-2 items-center">
                                             <Input
                                                 type="number"
                                                 min={1}
@@ -1733,7 +1735,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                                                     }))
                                                 }
                                             />
-                                            <span className="text-xs text-muted-foreground">
+                                            <span className="text-xs leading-5 text-muted-foreground">
                                                 check 通过后依次复查，任意未通过会回到 do 修复并重置复查计数
                                             </span>
                                         </div>
@@ -1770,13 +1772,14 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                                             />
                                         )}
                                     </div>
-                                    <div className="flex items-center justify-between gap-2">
+                                    <div className="grid gap-2">
                                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                             <Repeat className="h-4 w-4" />
                                             {autoConfig.autoRestartSession
                                                 ? '每轮都会新建会话并在未完成时继续循环'
                                                 : '未完成时停止自动循环'}
                                         </div>
+                                        <div className="flex flex-wrap items-center gap-2">
                                         <Button
                                             variant="outline"
                                             size="sm"
@@ -1800,6 +1803,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                                         >
                                             立即停止
                                         </Button>
+                                        </div>
                                     </div>
                                     <div className="rounded-xl bg-background/70 border px-3 py-2 text-sm flex items-center gap-2">
                                         {autoStatus ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : <AlertTriangle className="h-4 w-4 text-muted-foreground" />}
@@ -1830,12 +1834,12 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
 
             {mode === 'doc-dev' && (
                 <div className="max-w-5xl mx-auto w-full px-4 mb-4">
-                    <div className="rounded-2xl border bg-muted/30 p-3 space-y-3">
-                        <div className="flex items-center justify-between">
+                    <div className="rounded-2xl border border-border/70 bg-card/70 p-4 space-y-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
                             <div className="flex items-center gap-2 text-sm font-medium">
                                 自动执行结果记录
                             </div>
-                            <div className="flex gap-2 text-xs text-muted-foreground items-center">
+                            <div className="flex flex-wrap gap-2 text-xs text-muted-foreground items-center">
                                 {lastCycleMs !== null && !autoRunning && (
                                     <span>本轮 {formatDuration(lastCycleMs)}</span>
                                 )}

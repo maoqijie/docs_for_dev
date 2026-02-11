@@ -119,10 +119,10 @@ function MessageBubble({
                 isUser ? "items-end" : "items-start"
             )}>
                 <div className="flex items-center gap-2 mb-1 px-1">
-                    <span className="text-xs font-medium text-muted-foreground tracking-wide">
+                    <span className="text-xs font-medium leading-5 text-muted-foreground tracking-wide">
                         {isUser ? 'You' : 'Docs_For_Dev'}
                     </span>
-                    <span className="text-[10px] text-muted-foreground/60">
+                    <span className="text-[11px] leading-5 text-muted-foreground/70">
                         {timestamp}
                     </span>
                 </div>
@@ -137,10 +137,10 @@ function MessageBubble({
                     )}
                 >
                     <div className={cn(
-                        "prose prose-sm max-w-none break-words leading-relaxed",
+                        "prose prose-sm max-w-none break-words leading-relaxed prose-p:leading-relaxed prose-li:leading-relaxed",
                         isUser
                             ? "prose-invert dark:prose-zinc dark:text-zinc-900"
-                            : "text-foreground dark:prose-invert prose-headings:font-semibold prose-p:my-2"
+                            : "text-foreground dark:prose-invert prose-headings:font-semibold prose-p:my-2 prose-headings:tracking-tight"
                     )}>
                         <ReactMarkdown
                             remarkPlugins={[remarkGfm]}

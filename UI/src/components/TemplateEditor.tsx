@@ -130,12 +130,12 @@ export function TemplateEditor() {
         <Card className="p-4 space-y-2 border-border/70 bg-card/70 backdrop-blur-sm">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="font-semibold">{currentTemplate.description}</h3>
-              <p className="text-sm text-muted-foreground">模板名称: {currentTemplate.name}</p>
+              <h3 className="font-semibold tracking-tight leading-7">{currentTemplate.description}</h3>
+              <p className="text-sm leading-6 text-muted-foreground">模板名称: {currentTemplate.name}</p>
             </div>
           </div>
           {currentTemplate.variables.length > 0 && (
-            <div className="text-sm">
+            <div className="text-sm leading-6">
               <span className="font-medium">可用变量:</span>{' '}
               <span className="text-primary">
                 {currentTemplate.variables.map(v => `{{${v}}}`).join(', ')}
@@ -156,7 +156,7 @@ export function TemplateEditor() {
       </div>
 
       <div className="flex flex-wrap justify-between items-center gap-3">
-        <div className="text-sm text-muted-foreground">
+        <div className="text-sm leading-6 text-muted-foreground">
           提示: 使用 {`{{变量名}}`} 格式定义变量
         </div>
         <div className="flex space-x-2">

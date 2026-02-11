@@ -96,7 +96,7 @@ export function Sidebar({
 
                 <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border/60 bg-background/70">
                     <Sparkles className="h-4 w-4 text-primary" />
-                    <span className="text-sm font-medium text-foreground/90">
+                    <span className="text-sm font-medium leading-6 text-foreground/90">
                         {mode === 'doc-dev' ? '文档开发模式 (默认)' : '通用模式'}
                     </span>
                 </div>
@@ -182,12 +182,12 @@ export function Sidebar({
                                     ) : (
                                         <div>
                                             <div className={cn(
-                                                "font-medium truncate text-sm transition-colors",
+                                                "font-medium truncate text-sm leading-6 transition-colors",
                                                 currentSessionId === session.id ? "text-foreground" : "text-muted-foreground group-hover:text-foreground"
                                             )}>
                                                 {session.title}
                                             </div>
-                                            <div className="text-[10px] text-muted-foreground/60 mt-0.5">
+                                            <div className="text-[11px] leading-5 text-muted-foreground/70 mt-0.5">
                                                 {formatDate(session.updated_at)}
                                             </div>
                                         </div>

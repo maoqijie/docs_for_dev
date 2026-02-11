@@ -171,7 +171,7 @@ export function InputBox({ onSend, disabled, sessionId, prefill, onPrefillConsum
                         onPaste={handlePaste}
                         placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
                         disabled={disabled}
-                        className="min-h-[50px] max-h-[200px] resize-none border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-4 py-3 text-base leading-relaxed"
+                        className="min-h-[50px] max-h-[200px] resize-none border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-4 py-3 text-base leading-relaxed placeholder:leading-relaxed"
                         rows={1}
                     />
                     <Button
@@ -211,8 +211,8 @@ export function InputBox({ onSend, disabled, sessionId, prefill, onPrefillConsum
                                     )}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <div className="text-sm font-medium truncate">{att.name}</div>
-                                    <div className="text-xs text-muted-foreground">
+                                    <div className="text-sm font-medium leading-6 truncate">{att.name}</div>
+                                    <div className="text-xs leading-5 text-muted-foreground">
                                         {formatBytes(att.size)}
                                     </div>
                                 </div>
@@ -232,7 +232,7 @@ export function InputBox({ onSend, disabled, sessionId, prefill, onPrefillConsum
                     </div>
                 )}
                 <div className="text-center mt-2">
-                    <p className="text-xs text-muted-foreground/50">
+                    <p className="text-xs leading-5 text-muted-foreground/65 max-w-prose mx-auto">
                         支持粘贴或上传图片/文件，Docs_For_Dev 可能生成不准确信息，请核对重要事实。
                     </p>
                 </div>

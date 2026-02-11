@@ -288,7 +288,7 @@ function App() {
                   Docs_For_Dev · 模式选择
                 </div>
                 <h2 className="text-3xl md:text-4xl font-bold tracking-tight">选择工作模式</h2>
-                <p className="text-muted-foreground text-base md:text-lg max-w-2xl mx-auto">
+                <p className="text-muted-foreground text-base md:text-lg leading-relaxed max-w-2xl mx-auto">
                   文档开发模式将回答聚焦于文档/开发流程，通用模式则保持普通聊天。
                 </p>
               </div>
@@ -319,13 +319,13 @@ function App() {
                         <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
                           <m.icon className="h-4 w-4" />
                         </span>
-                        <span className="text-lg font-semibold">{m.title}</span>
+                        <span className="text-lg font-semibold tracking-tight">{m.title}</span>
                       </div>
                       {mode === m.id && (
                         <span className="text-xs text-primary font-medium">已选</span>
                       )}
                     </div>
-                    <p className="text-sm text-muted-foreground mt-3 leading-relaxed">{m.desc}</p>
+                    <p className="text-sm text-muted-foreground/95 mt-3 leading-relaxed max-w-prose">{m.desc}</p>
                   </motion.button>
                 ))}
               </div>
@@ -369,7 +369,7 @@ function App() {
                     </div>
                     <div className="space-y-2">
                       <h2 className="text-3xl md:text-4xl font-bold tracking-tight">欢迎使用 Docs_For_Dev</h2>
-                      <p className="text-muted-foreground text-base md:text-lg leading-relaxed">
+                      <p className="text-muted-foreground text-base md:text-lg leading-relaxed max-w-prose mx-auto">
                         您的智能编程助手，随时准备为您解答问题、编写代码。
                       </p>
                     </div>
@@ -378,8 +378,8 @@ function App() {
                       className="p-4 rounded-2xl bg-muted/40 border border-border/70 hover:bg-accent/60 hover:border-primary/40 transition-all duration-200 cursor-pointer"
                       onClick={() => handleNewSession(mode === 'doc-dev' ? '新的文档任务' : undefined)}
                     >
-                      <h3 className="font-semibold mb-1">{mode === 'doc-dev' ? '启动任务' : '编写代码'}</h3>
-                      <p className="text-sm text-muted-foreground">
+                      <h3 className="font-semibold tracking-tight mb-1">{mode === 'doc-dev' ? '启动任务' : '编写代码'}</h3>
+                      <p className="text-sm text-muted-foreground leading-relaxed max-w-prose">
                         {mode === 'doc-dev' ? '基于文档生成新任务并自动执行' : '帮助我实现一个 React 组件...'}
                       </p>
                     </div>
@@ -387,8 +387,8 @@ function App() {
                       className="p-4 rounded-2xl bg-muted/40 border border-border/70 hover:bg-accent/60 hover:border-primary/40 transition-all duration-200 cursor-pointer"
                       onClick={() => handleNewSession()}
                     >
-                      <h3 className="font-semibold mb-1">{mode === 'doc-dev' ? '查看历史任务' : '解释概念'}</h3>
-                      <p className="text-sm text-muted-foreground">{mode === 'doc-dev' ? '浏览任务历史与自动化结果' : '什么是 React Server Components?'}</p>
+                      <h3 className="font-semibold tracking-tight mb-1">{mode === 'doc-dev' ? '查看历史任务' : '解释概念'}</h3>
+                      <p className="text-sm text-muted-foreground leading-relaxed max-w-prose">{mode === 'doc-dev' ? '浏览任务历史与自动化结果' : '什么是 React Server Components?'}</p>
                     </div>
                   </div>
                   <Button
