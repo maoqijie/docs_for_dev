@@ -95,12 +95,12 @@ export function TemplateEditor() {
   const currentTemplate = templates.find(t => t.name === selectedTemplate);
 
   return (
-    <div className="flex flex-col h-full p-4 space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">模板编辑器</h2>
+    <div className="flex flex-col h-full p-4 md:p-6 space-y-4 bg-transparent">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-2xl font-bold tracking-tight">模板编辑器</h2>
         <div className="flex items-center space-x-2">
           <Select value={selectedTemplate} onValueChange={setSelectedTemplate}>
-            <SelectTrigger className="w-[250px]">
+            <SelectTrigger className="w-[250px] bg-card/75 border-border/70">
               <SelectValue placeholder="选择模板" />
             </SelectTrigger>
             <SelectContent>
@@ -116,10 +116,10 @@ export function TemplateEditor() {
 
       {message && (
         <div
-          className={`p-3 rounded-md ${
+          className={`p-3 rounded-xl border text-sm backdrop-blur-sm ${
             message.type === 'success'
-              ? 'bg-green-50 text-green-800 border border-green-200'
-              : 'bg-red-50 text-red-800 border border-red-200'
+              ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 border-emerald-500/30'
+              : 'bg-destructive/10 text-destructive border-destructive/30'
           }`}
         >
           {message.text}
@@ -127,17 +127,17 @@ export function TemplateEditor() {
       )}
 
       {currentTemplate && (
-        <Card className="p-4 space-y-2">
+        <Card className="p-4 space-y-2 border-border/70 bg-card/70 backdrop-blur-sm">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="font-semibold">{currentTemplate.description}</h3>
-              <p className="text-sm text-gray-500">模板名称: {currentTemplate.name}</p>
+              <p className="text-sm text-muted-foreground">模板名称: {currentTemplate.name}</p>
             </div>
           </div>
           {currentTemplate.variables.length > 0 && (
             <div className="text-sm">
               <span className="font-medium">可用变量:</span>{' '}
-              <span className="text-blue-600">
+              <span className="text-primary">
                 {currentTemplate.variables.map(v => `{{${v}}}`).join(', ')}
               </span>
             </div>
@@ -155,8 +155,8 @@ export function TemplateEditor() {
         />
       </div>
 
-      <div className="flex justify-between items-center">
-        <div className="text-sm text-gray-500">
+      <div className="flex flex-wrap justify-between items-center gap-3">
+        <div className="text-sm text-muted-foreground">
           提示: 使用 {`{{变量名}}`} 格式定义变量
         </div>
         <div className="flex space-x-2">

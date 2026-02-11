@@ -57,15 +57,15 @@ export function Sidebar({
     };
 
     return (
-        <div className="w-72 border-r bg-muted/10 backdrop-blur-xl flex flex-col h-full transition-all duration-300 ease-in-out">
+        <div className="w-72 border-r border-border/70 bg-card/55 backdrop-blur-2xl flex flex-col h-full transition-all duration-300 ease-in-out">
             {/* 头部 */}
-            <div className="p-6 space-y-4">
+            <div className="p-5 space-y-4">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                        <div className="p-2 bg-primary/10 rounded-xl">
+                        <div className="p-2 bg-primary/10 rounded-xl border border-primary/20">
                             <Sparkles className="h-5 w-5 text-primary" />
                         </div>
-                        <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
+                        <h1 className="text-lg font-bold bg-gradient-to-r from-primary to-violet-500 bg-clip-text text-transparent tracking-tight">
                             Docs_For_Dev
                         </h1>
                     </div>
@@ -73,7 +73,7 @@ export function Sidebar({
                         <Button
                             variant="ghost"
                             size="icon"
-                            className="rounded-full hover:bg-muted/50 transition-colors"
+                            className="rounded-full hover:bg-accent/70 transition-all duration-200 cursor-pointer"
                             onClick={() => onViewChange(currentView === 'chat' ? 'templates' : 'chat')}
                             title={currentView === 'chat' ? '模板设置' : '返回聊天'}
                         >
@@ -82,7 +82,7 @@ export function Sidebar({
                         <Button
                             variant="ghost"
                             size="icon"
-                            className="rounded-full hover:bg-muted/50 transition-colors"
+                            className="rounded-full hover:bg-accent/70 transition-all duration-200 cursor-pointer"
                             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
                         >
                             {theme === 'dark' ? (
@@ -94,16 +94,16 @@ export function Sidebar({
                     </div>
                 </div>
 
-                <div className="flex items-center gap-2 px-2 py-2 rounded-xl border bg-background/70">
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border/60 bg-background/70">
                     <Sparkles className="h-4 w-4 text-primary" />
-                    <span className="text-sm font-medium">
+                    <span className="text-sm font-medium text-foreground/90">
                         {mode === 'doc-dev' ? '文档开发模式 (默认)' : '通用模式'}
                     </span>
                 </div>
 
                 <Button
                     onClick={() => onNewSession()}
-                    className="w-full rounded-xl shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-all duration-300 bg-gradient-to-r from-primary to-purple-600 hover:scale-[1.02]"
+                    className="w-full rounded-xl shadow-lg shadow-primary/25 hover:shadow-primary/35 transition-all duration-200 bg-gradient-to-r from-primary to-violet-600 hover:-translate-y-0.5"
                     size="lg"
                 >
                     <Plus className="mr-2 h-5 w-5" />
@@ -111,10 +111,10 @@ export function Sidebar({
                 </Button>
             </div>
 
-            <Separator className="opacity-50" />
+            <Separator className="opacity-40" />
 
             {/* 会话列表 */}
-            <ScrollArea className="flex-1 px-3 py-4">
+            <ScrollArea className="flex-1 px-3 py-3">
                 <div className="space-y-1">
                     {sessions.map((session) => (
                         <motion.div
@@ -123,8 +123,8 @@ export function Sidebar({
                             animate={{ opacity: 1, x: 0 }}
                             key={session.id}
                             className={cn(
-                                'group relative rounded-xl p-3 cursor-pointer transition-all duration-200 hover:bg-accent/50 border border-transparent',
-                                currentSessionId === session.id && 'bg-accent border-border/50 shadow-sm'
+                                'group relative rounded-xl p-3 cursor-pointer transition-all duration-200 hover:bg-accent/60 border border-transparent hover:border-primary/20',
+                                currentSessionId === session.id && 'bg-primary/10 border-primary/30 shadow-sm'
                             )}
                             onClick={() => onSessionSelect(session.id)}
                         >
@@ -198,7 +198,7 @@ export function Sidebar({
                                         <Button
                                             variant="ghost"
                                             size="icon"
-                                            className="opacity-0 group-hover:opacity-100 transition-all h-7 w-7 rounded-lg"
+                                            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-all h-7 w-7 rounded-lg cursor-pointer"
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 startEdit(session);
@@ -210,7 +210,7 @@ export function Sidebar({
                                     <Button
                                         variant="ghost"
                                         size="icon"
-                                        className="opacity-0 group-hover:opacity-100 transition-all h-7 w-7 rounded-lg hover:bg-destructive/10 hover:text-destructive"
+                                        className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-all h-7 w-7 rounded-lg hover:bg-destructive/10 hover:text-destructive cursor-pointer"
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             onDeleteSession(session.id);

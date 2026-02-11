@@ -1478,9 +1478,9 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
             className="flex flex-col h-full relative overflow-y-auto"
         >
             <div className="w-full px-4 pt-3">
-                <div className="flex flex-wrap gap-2 items-center">
+                <div className="max-w-5xl mx-auto flex flex-wrap gap-2 items-center rounded-2xl border border-border/70 bg-card/65 backdrop-blur-md p-2 shadow-sm">
                     <Select value={model} onValueChange={setModel}>
-                        <SelectTrigger className="w-[220px] bg-background/80 backdrop-blur-sm shadow-sm border-border/50 rounded-full h-9 px-4 transition-all hover:bg-accent/50">
+                        <SelectTrigger className="w-[220px] bg-background/80 backdrop-blur-sm shadow-sm border-border/60 rounded-full h-9 px-4 transition-all duration-200 hover:bg-accent/60 focus-visible:ring-primary/50">
                             <div className="flex items-center gap-2 truncate">
                                 <Sparkles className="h-3.5 w-3.5 text-primary flex-shrink-0" />
                                 <SelectValue placeholder="选择模型" />
@@ -1496,7 +1496,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                     </Select>
 
                     <Select value={thinkingDepth} onValueChange={setThinkingDepth}>
-                        <SelectTrigger className="w-[160px] bg-background/80 backdrop-blur-sm shadow-sm border-border/50 rounded-full h-9 px-4 transition-all hover:bg-accent/50">
+                        <SelectTrigger className="w-[160px] bg-background/80 backdrop-blur-sm shadow-sm border-border/60 rounded-full h-9 px-4 transition-all duration-200 hover:bg-accent/60 focus-visible:ring-primary/50">
                             <div className="flex items-center gap-2">
                                 <BrainCircuit className="h-3.5 w-3.5 text-purple-500" />
                                 <SelectValue placeholder="思考深度" />
@@ -1518,7 +1518,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                     <motion.div
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="max-w-5xl mx-auto rounded-3xl border bg-card/80 backdrop-blur-md shadow-lg shadow-primary/5 p-4 space-y-4 max-h-[72vh] overflow-y-auto pr-2"
+                        className="max-w-5xl mx-auto rounded-3xl border border-border/70 bg-card/75 backdrop-blur-xl shadow-lg shadow-primary/10 p-4 space-y-4 max-h-[72vh] overflow-y-auto pr-2"
                     >
                         <div className="flex flex-wrap gap-3 items-start justify-between">
                             <div className="space-y-1">
@@ -1911,7 +1911,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                 isLoading={isLoading}
             />
             {error && (
-                <div className="px-6 pb-2 text-sm text-red-500">
+                <div className="mx-6 mb-2 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
                     发送失败：{error}
                 </div>
             )}
@@ -1929,7 +1929,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                 <Button
                     variant="secondary"
                     size="icon"
-                    className="h-10 w-10 rounded-full shadow-lg"
+                    className="h-10 w-10 rounded-full shadow-lg border border-border/60 bg-card/85 backdrop-blur-md hover:bg-accent/70"
                     onClick={onModeBack}
                     title="返回模式选择"
                 >

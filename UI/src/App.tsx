@@ -4,7 +4,7 @@ import { ChatPanel } from './components/ChatPanel';
 import { Sidebar } from './components/Sidebar';
 import { TemplateEditor } from './components/TemplateEditor';
 import { ThemeProvider } from './components/ThemeProvider';
-import { Plus } from 'lucide-react';
+import { BookOpen, FileCode2, MessagesSquare, Plus, Sparkles } from 'lucide-react';
 import { Button } from './components/ui/button';
 import { motion } from 'framer-motion';
 import { tauriNotReadyMessage } from './lib/tauri';
@@ -266,21 +266,29 @@ function App() {
 
   return (
     <ThemeProvider defaultTheme="dark" storageKey="codex-theme">
-      <div className="flex h-screen bg-background relative">
+      <div className="flex h-screen bg-transparent relative">
+        <div className="pointer-events-none absolute inset-0 z-0">
+          <div className="absolute -top-28 left-1/3 h-80 w-80 rounded-full bg-primary/20 blur-3xl" />
+          <div className="absolute bottom-0 right-0 h-72 w-72 rounded-full bg-violet-500/15 blur-3xl" />
+        </div>
         {bridgeError && (
           <div className="absolute left-4 right-4 top-4 z-50">
-            <div className="rounded-xl border border-destructive/30 bg-destructive/10 text-destructive px-4 py-3 text-sm shadow-sm">
+            <div className="rounded-xl border border-destructive/30 bg-destructive/10 text-destructive px-4 py-3 text-sm shadow-sm backdrop-blur-md">
               {bridgeError}
             </div>
           </div>
         )}
         {showModePicker ? (
           // 仅显示模式选择页，隐藏侧边栏
-          <div className="flex-1 flex items-center justify-center bg-gradient-to-b from-background to-muted/20 px-6">
+          <div className="relative z-10 flex-1 flex items-center justify-center px-6">
             <div className="max-w-4xl w-full space-y-6">
-              <div className="text-center space-y-2">
-                <h2 className="text-3xl font-bold">选择模式</h2>
-                <p className="text-muted-foreground">
+              <div className="text-center space-y-3">
+                <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-xs font-semibold text-primary">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Docs_For_Dev · 模式选择
+                </div>
+                <h2 className="text-3xl md:text-4xl font-bold tracking-tight">选择工作模式</h2>
+                <p className="text-muted-foreground text-base md:text-lg max-w-2xl mx-auto">
                   文档开发模式将回答聚焦于文档/开发流程，通用模式则保持普通聊天。
                 </p>
               </div>
@@ -290,11 +298,13 @@ function App() {
                     id: 'doc-dev' as const,
                     title: '文档开发模式 (默认)',
                     desc: '聚焦文档撰写、开发步骤、结构化输出与可执行指导。',
+                    icon: BookOpen,
                   },
                   {
                     id: 'general' as const,
                     title: '通用模式',
                     desc: '保持普通聊天，不强制文档语境。',
+                    icon: MessagesSquare,
                   },
                 ].map((m) => (
                   <motion.button
@@ -302,15 +312,20 @@ function App() {
                     whileHover={{ scale: 1.01 }}
                     whileTap={{ scale: 0.99 }}
                     onClick={() => handleSelectMode(m.id)}
-                    className="text-left rounded-2xl border bg-card/80 p-5 shadow-sm hover:border-primary transition-all"
+                    className="group text-left rounded-2xl border border-border/70 bg-card/80 backdrop-blur-md p-5 shadow-sm hover:border-primary/60 hover:shadow-lg focus-visible:ring-primary transition-all cursor-pointer"
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="text-lg font-semibold">{m.title}</span>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                          <m.icon className="h-4 w-4" />
+                        </span>
+                        <span className="text-lg font-semibold">{m.title}</span>
+                      </div>
                       {mode === m.id && (
                         <span className="text-xs text-primary font-medium">已选</span>
                       )}
                     </div>
-                    <p className="text-sm text-muted-foreground mt-2 leading-relaxed">{m.desc}</p>
+                    <p className="text-sm text-muted-foreground mt-3 leading-relaxed">{m.desc}</p>
                   </motion.button>
                 ))}
               </div>
@@ -329,7 +344,7 @@ function App() {
               currentView={currentView}
               onViewChange={setCurrentView}
             />
-            <div className="flex-1 flex flex-col relative overflow-hidden">
+            <div className="relative z-10 flex-1 flex flex-col overflow-hidden">
               {currentView === 'templates' ? (
                 <TemplateEditor />
               ) : currentSessionId ? (
@@ -343,25 +358,24 @@ function App() {
                   sessionRoots={sessionRoots}
                 />
               ) : (
-                <div className="flex-1 flex items-center justify-center bg-gradient-to-b from-background to-muted/20">
-                  <div className="text-center space-y-8 max-w-lg px-4">
+                <div className="flex-1 flex items-center justify-center px-6">
+                  <div className="w-full max-w-3xl rounded-3xl border border-border/70 bg-card/75 backdrop-blur-xl p-6 md:p-10 shadow-2xl shadow-primary/5">
+                    <div className="text-center space-y-8">
                     <div className="relative">
                       <div className="absolute inset-0 bg-gradient-to-r from-blue-500 to-purple-600 blur-3xl opacity-20 rounded-full" />
-                      <div className="relative bg-background p-6 rounded-2xl shadow-xl border inline-block">
-                        <div className="text-6xl bg-gradient-to-br from-blue-500 to-purple-600 bg-clip-text text-transparent">
-                          💬
-                        </div>
+                      <div className="relative inline-flex h-20 w-20 items-center justify-center rounded-2xl border border-primary/30 bg-background/90 shadow-xl">
+                        <FileCode2 className="h-10 w-10 text-primary" />
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <h2 className="text-3xl font-bold tracking-tight">欢迎使用 Docs_For_Dev</h2>
-                      <p className="text-muted-foreground text-lg">
+                      <h2 className="text-3xl md:text-4xl font-bold tracking-tight">欢迎使用 Docs_For_Dev</h2>
+                      <p className="text-muted-foreground text-base md:text-lg leading-relaxed">
                         您的智能编程助手，随时准备为您解答问题、编写代码。
                       </p>
                     </div>
-                    <div className="grid grid-cols-2 gap-4 text-left">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
                     <div
-                      className="p-4 rounded-xl bg-muted/50 border hover:bg-muted transition-colors cursor-pointer"
+                      className="p-4 rounded-2xl bg-muted/40 border border-border/70 hover:bg-accent/60 hover:border-primary/40 transition-all duration-200 cursor-pointer"
                       onClick={() => handleNewSession(mode === 'doc-dev' ? '新的文档任务' : undefined)}
                     >
                       <h3 className="font-semibold mb-1">{mode === 'doc-dev' ? '启动任务' : '编写代码'}</h3>
@@ -370,7 +384,7 @@ function App() {
                       </p>
                     </div>
                     <div
-                      className="p-4 rounded-xl bg-muted/50 border hover:bg-muted transition-colors cursor-pointer"
+                      className="p-4 rounded-2xl bg-muted/40 border border-border/70 hover:bg-accent/60 hover:border-primary/40 transition-all duration-200 cursor-pointer"
                       onClick={() => handleNewSession()}
                     >
                       <h3 className="font-semibold mb-1">{mode === 'doc-dev' ? '查看历史任务' : '解释概念'}</h3>
@@ -380,11 +394,12 @@ function App() {
                   <Button
                       onClick={() => handleNewSession()}
                       size="lg"
-                      className="rounded-full px-8 shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-all hover:scale-105"
+                      className="rounded-full px-8 shadow-lg shadow-primary/25 hover:shadow-primary/35 transition-all duration-200 hover:-translate-y-0.5"
                     >
                       <Plus className="mr-2 h-5 w-5" />
                       开始新的对话
                     </Button>
+                  </div>
                   </div>
                 </div>
               )}

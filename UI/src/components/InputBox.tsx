@@ -135,20 +135,20 @@ export function InputBox({ onSend, disabled, sessionId, prefill, onPrefillConsum
     }, [sessionId]);
 
     return (
-        <div className="p-6 bg-gradient-to-t from-background via-background to-transparent">
+        <div className="p-4 md:p-6 bg-gradient-to-t from-background via-background/95 to-transparent border-t border-border/60">
             <motion.form
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 onSubmit={handleSubmit}
                 className="max-w-4xl mx-auto relative"
             >
-                <div className="relative flex items-end gap-2 p-2 bg-muted/30 backdrop-blur-sm border rounded-2xl shadow-lg focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary transition-all duration-300">
+                <div className="relative flex items-end gap-2 p-2 bg-card/70 backdrop-blur-sm border border-border/70 rounded-2xl shadow-lg focus-within:ring-2 focus-within:ring-primary/30 focus-within:border-primary/50 transition-all duration-200">
                     <div className="flex flex-col gap-2 px-2 py-1">
                         <Button
                             type="button"
                             variant="ghost"
                             size="icon"
-                            className="h-9 w-9 rounded-xl"
+                            className="h-9 w-9 rounded-xl hover:bg-accent/70 cursor-pointer"
                             onClick={() => fileInputRef.current?.click()}
                             disabled={disabled}
                             title="上传图片/文件"
@@ -171,19 +171,21 @@ export function InputBox({ onSend, disabled, sessionId, prefill, onPrefillConsum
                         onPaste={handlePaste}
                         placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
                         disabled={disabled}
-                        className="min-h-[50px] max-h-[200px] resize-none border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-4 py-3 text-base"
+                        className="min-h-[50px] max-h-[200px] resize-none border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-4 py-3 text-base leading-relaxed"
                         rows={1}
                     />
                     <Button
                         type="submit"
-                        disabled={disabled || !input.trim()}
+                        disabled={disabled || (!input.trim() && attachments.length === 0) || isReading}
                         size="icon"
                         className={cn(
-                            "mb-1 mr-1 h-9 w-9 rounded-xl transition-all duration-300",
-                            input.trim() ? "bg-primary hover:bg-primary/90 shadow-md hover:scale-105" : "bg-muted-foreground/20"
+                            "mb-1 mr-1 h-9 w-9 rounded-xl transition-all duration-200",
+                            (input.trim() || attachments.length > 0)
+                                ? "bg-primary hover:bg-primary/90 shadow-md hover:-translate-y-0.5"
+                                : "bg-muted-foreground/20"
                         )}
                     >
-                        {disabled ? (
+                        {disabled || isReading ? (
                             <Loader2 className="h-5 w-5 animate-spin" />
                         ) : (
                             <Send className="h-4 w-4" />
@@ -195,7 +197,7 @@ export function InputBox({ onSend, disabled, sessionId, prefill, onPrefillConsum
                         {attachments.map((att) => (
                             <div
                                 key={att.id}
-                                className="flex items-center gap-3 px-3 py-2 rounded-xl border bg-muted/40"
+                                className="flex items-center gap-3 px-3 py-2 rounded-xl border border-border/70 bg-card/65 backdrop-blur-sm"
                             >
                                 <div className="h-10 w-10 rounded-lg overflow-hidden bg-muted flex items-center justify-center">
                                     {att.isImage ? (
@@ -218,7 +220,7 @@ export function InputBox({ onSend, disabled, sessionId, prefill, onPrefillConsum
                                     type="button"
                                     variant="ghost"
                                     size="icon"
-                                    className="h-8 w-8"
+                                    className="h-8 w-8 hover:bg-accent/80 cursor-pointer"
                                     onClick={() =>
                                         setAttachments((prev) => prev.filter((a) => a.id !== att.id))
                                     }

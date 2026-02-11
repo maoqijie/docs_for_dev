@@ -79,6 +79,8 @@ function MessageBubble({
 }) {
     const isUser = message.role === 'user';
 
+    const timestamp = new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
     return (
         <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -86,7 +88,7 @@ function MessageBubble({
             exit={{ opacity: 0, y: -20 }}
             transition={{ delay: index * 0.05, duration: 0.4, ease: "easeOut" }}
             className={cn(
-                "flex gap-4 w-full",
+                "flex gap-3 md:gap-4 w-full",
                 isUser ? "flex-row-reverse" : "flex-row"
             )}
         >
@@ -97,7 +99,7 @@ function MessageBubble({
             )}>
                 <div
                     className={cn(
-                        "w-full h-full flex items-center justify-center",
+                "w-full h-full flex items-center justify-center",
                         isUser
                             ? "bg-gradient-to-br from-blue-600 to-violet-600"
                             : "bg-gradient-to-br from-emerald-500 to-teal-600"
@@ -113,30 +115,32 @@ function MessageBubble({
 
             {/* 消息内容 */}
             <div className={cn(
-                "flex flex-col max-w-[85%]",
+                "flex flex-col max-w-[90%] md:max-w-[85%]",
                 isUser ? "items-end" : "items-start"
             )}>
                 <div className="flex items-center gap-2 mb-1 px-1">
-                    <span className="text-xs font-medium text-muted-foreground">
+                    <span className="text-xs font-medium text-muted-foreground tracking-wide">
                         {isUser ? 'You' : 'Docs_For_Dev'}
                     </span>
                     <span className="text-[10px] text-muted-foreground/60">
-                        {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {timestamp}
                     </span>
                 </div>
 
                 <Card
                     className={cn(
-                        "px-5 py-3.5 shadow-sm border-0",
+                        "px-4 md:px-5 py-3.5 shadow-sm border transition-colors",
                         isUser
-                            ? "bg-primary text-primary-foreground rounded-2xl rounded-tr-sm"
-                            : "bg-muted/40 backdrop-blur-sm rounded-2xl rounded-tl-sm border border-border/40",
+                            ? "bg-primary text-primary-foreground border-primary/40 rounded-2xl rounded-tr-sm"
+                            : "bg-card/75 backdrop-blur-sm rounded-2xl rounded-tl-sm border-border/60",
                         isStreaming && "animate-pulse-subtle"
                     )}
                 >
                     <div className={cn(
-                        "prose prose-sm max-w-none break-words",
-                        isUser ? "prose-invert dark:prose-zinc dark:text-zinc-900" : "dark:prose-invert"
+                        "prose prose-sm max-w-none break-words leading-relaxed",
+                        isUser
+                            ? "prose-invert dark:prose-zinc dark:text-zinc-900"
+                            : "text-foreground dark:prose-invert prose-headings:font-semibold prose-p:my-2"
                     )}>
                         <ReactMarkdown
                             remarkPlugins={[remarkGfm]}
@@ -185,12 +189,12 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
     return (
         <div className="relative group my-4">
             {/* 代码块头部 */}
-            <div className="flex items-center justify-between bg-zinc-800 px-4 py-2 rounded-t-lg">
+            <div className="flex items-center justify-between bg-zinc-900/95 px-4 py-2 rounded-t-lg border border-zinc-700/80 border-b-0">
                 <span className="text-xs text-zinc-400">{language}</span>
                 <Button
                     variant="ghost"
                     size="sm"
-                    className="h-8 px-2"
+                    className="h-8 px-2 hover:bg-zinc-700/60 text-zinc-200 cursor-pointer"
                     onClick={handleCopy}
                 >
                     {copied ? (
