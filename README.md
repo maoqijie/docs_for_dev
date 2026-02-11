@@ -216,7 +216,7 @@ codex --version
 # API 配置
 export CODEX_API_KEY="your-api-key-here"
 export CODEX_API_ENDPOINT="https://api.openai.com/v1/chat/completions"
-export CODEX_MODEL="gpt-5.1-codex-max"
+export CODEX_MODEL="gpt-5.2"
 ```
 
 ## 🔨 开发模式
@@ -323,7 +323,7 @@ cargo tauri build
 |--------|--------|------|
 | `CODEX_API_KEY` | 无（必需） | API 访问密钥 |
 | `CODEX_API_ENDPOINT` | `https://api.openai.com/v1/chat/completions` | API 端点地址 |
-| `CODEX_MODEL` | `gpt-5.1-codex-max` | 默认模型名称 |
+| `CODEX_MODEL` | `gpt-5.2` | 默认模型名称 |
 
 ## 📚 使用指南
 
@@ -442,10 +442,10 @@ cargo tauri build
 #### 选择模型
 
 点击右上角的模型下拉菜单：
-- `gpt-5.1-codex-max`（默认，最强推理能力）
-- `gpt-4-turbo`
-- `gpt-3.5-turbo`
-- 其他支持的模型
+- `gpt-5.2`（默认）
+- `gpt-5.2-codex`
+- `gpt-5.3-codex`
+- `gpt-5.2-pro`
 
 #### 选择思考深度
 
@@ -776,7 +776,7 @@ Connection timeout
    ```bash
    export CODEX_API_KEY="sk-your-api-key-here"
    export CODEX_API_ENDPOINT="https://api.openai.com/v1/chat/completions"
-   export CODEX_MODEL="gpt-5.1-codex-max"
+   export CODEX_MODEL="gpt-5.2"
    ```
 
 3. **永久设置**（添加到 shell 配置）:

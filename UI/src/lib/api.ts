@@ -72,13 +72,13 @@ export async function getMessages(sessionId: string): Promise<Message[]> {
  *
  * @param sessionId 会话 ID
  * @param content 消息内容
- * @param model 模型名称 (例如: "gpt-5", "gpt-5.1-codex-max")
+ * @param model 模型名称 (例如: "gpt-5.2", "gpt-5.2-codex")
  * @param thinkingDepth 思考深度 (例如: "low", "medium", "high", "xhigh")
  * @param onChunk 接收流式 chunk 的回调函数
  *
  * @example
  * ```typescript
- * await sendMessage(sessionId, "你好", "gpt-5", "high", (chunk) => {
+ * await sendMessage(sessionId, "你好", "gpt-5.2", "high", (chunk) => {
  *   console.log("收到:", chunk);
  * });
  * ```

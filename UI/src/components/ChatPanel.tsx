@@ -141,13 +141,16 @@ const normalizeAutomationConfig = (config?: Partial<AutomationConfig>): Automati
 };
 
 const MODELS = [
-    { id: 'gpt-5.1-codex-max', name: 'Codex Max (GPT-5.1)' },
-    { id: 'gpt-5.1-codex-mini', name: 'Codex Mini (GPT-5.1)' },
-    { id: 'gpt-5.1', name: 'GPT-5.1' },
-    { id: 'gpt-5-thinking', name: 'GPT-5 Thinking' },
-    { id: 'gpt-5', name: 'GPT-5' },
-    { id: 'gpt-5-mini', name: 'GPT-5 Mini' },
+    { id: 'gpt-5.2', name: 'GPT-5.2' },
+    { id: 'gpt-5.2-codex', name: 'GPT-5.2 Codex' },
+    { id: 'gpt-5.3-codex', name: 'GPT-5.3 Codex' },
+    { id: 'gpt-5.2-pro', name: 'GPT-5.2 Pro' },
 ];
+
+const MODEL_ID_SET = new Set(MODELS.map((item) => item.id));
+
+const resolveModelId = (value?: string) =>
+    value && MODEL_ID_SET.has(value) ? value : MODELS[0].id;
 
 const THINKING_LEVELS = [
     { id: 'minimal', name: 'Minimal Effort' },
@@ -155,6 +158,25 @@ const THINKING_LEVELS = [
     { id: 'medium', name: 'Medium Effort' },
     { id: 'high', name: 'High Effort' },
 ];
+
+const THINKING_LEVEL_ID_SET = new Set([
+    ...THINKING_LEVELS.map((item) => item.id),
+    'xhigh',
+]);
+
+const supportsXHigh = (modelId: string) => modelId.includes('codex');
+
+const resolveThinkingDepth = (modelId: string, value?: string) => {
+    const normalized = value?.trim();
+    if (!normalized || !THINKING_LEVEL_ID_SET.has(normalized)) return 'high';
+    if (normalized === 'xhigh' && !supportsXHigh(modelId)) return 'high';
+    return normalized;
+};
+
+const buildThinkingLevels = (modelId: string) =>
+    supportsXHigh(modelId)
+        ? [...THINKING_LEVELS, { id: 'xhigh', name: 'Extra High Effort' }]
+        : THINKING_LEVELS;
 
 const CURRENT_STATE_VERSION = 3;
 
@@ -176,7 +198,7 @@ const createDefaultSessionState = (rootId: string, mode: 'doc-dev' | 'general', 
     rootId,
     pendingPrefill: undefined,
     model: MODELS[0].id,
-    thinkingDepth: 'xhigh',
+    thinkingDepth: 'high',
     mode,
     currentCycleStart: null,
     stateOwnerId: ownerId,
@@ -306,7 +328,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
     const [, setIsMessagesLoading] = useState(true);
     const [streamingContent, setStreamingContent] = useState('');
     const [model, setModel] = useState(MODELS[0].id);
-    const [thinkingDepth, setThinkingDepth] = useState('xhigh');
+    const [thinkingDepth, setThinkingDepth] = useState('high');
     const [error, setError] = useState<string | null>(null);
 
     const [docFiles, setDocFiles] = useState<DocFile[]>([]);
@@ -410,8 +432,9 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
         setAutoAbort(state.autoAbort || false);
         setRecheckProgress(state.recheckProgress ?? 0);
         setPendingPrefill(state.pendingPrefill);
-        setModel(state.model || MODELS[0].id);
-        setThinkingDepth(state.thinkingDepth || 'xhigh');
+        const nextModel = resolveModelId(state.model);
+        setModel(nextModel);
+        setThinkingDepth(resolveThinkingDepth(nextModel, state.thinkingDepth));
         setCurrentCycleStart(state.currentCycleStart || null);
     };
 
@@ -626,6 +649,13 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
     }, [sessionId, model, thinkingDepth, mode]);
 
     useEffect(() => {
+        const normalized = resolveThinkingDepth(model, thinkingDepth);
+        if (normalized !== thinkingDepth) {
+            setThinkingDepth(normalized);
+        }
+    }, [model, thinkingDepth]);
+
+    useEffect(() => {
         void persistSessionState(sessionId);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [
@@ -760,6 +790,12 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
         }
 
         try {
+            const messageModel = resolveModelId(state.model || model);
+            const messageThinkingDepth = resolveThinkingDepth(
+                messageModel,
+                state.thinkingDepth || thinkingDepth,
+            );
+
             const finalContent =
                 state.mode === 'doc-dev'
                     ? `【文档开发模式】请针对文档/开发相关需求输出结构化、可执行的步骤与示例。\n${content}`
@@ -768,8 +804,8 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
             await sendMessage(
                 targetSession,
                 finalContent,
-                state.model || model,
-                state.thinkingDepth || thinkingDepth,
+                messageModel,
+                messageThinkingDepth,
                 (chunk) => {
                     // 每次 chunk 到达时重新检查，避免闭包捕获旧值
                     const currentlyActive = targetSession === currentSessionIdRef.current;
@@ -1430,9 +1466,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
         }
     };
 
-    const currentThinkingLevels = model === 'gpt-5.1-codex-max'
-        ? [...THINKING_LEVELS, { id: 'xhigh', name: 'Extra High Effort' }]
-        : THINKING_LEVELS;
+    const currentThinkingLevels = buildThinkingLevels(model);
 
     // 仅在主动发送/流式时显示顶部加载，不因历史加载闪烁
     const showTopLoader = isLoading || !!streamingContent;
