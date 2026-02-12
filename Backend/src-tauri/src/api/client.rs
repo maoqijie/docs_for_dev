@@ -6,7 +6,7 @@ use std::time::Duration;
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use tokio::{
-    io::{AsyncBufReadExt, BufReader},
+    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     process::{Child, Command},
     task::JoinHandle,
     time::{timeout, Instant},
@@ -113,7 +113,8 @@ impl CodexClient {
             .arg("-m")
             .arg(model_override.unwrap_or_else(|| self.model.clone()))
             .arg("--dangerously-bypass-approvals-and-sandbox")
-            .arg("--skip-git-repo-check");
+            .arg("--skip-git-repo-check")
+            .arg("-");
 
         // 发生错误路径提前返回时，自动尝试终止子进程
         command.kill_on_drop(true);
@@ -141,7 +142,7 @@ impl CodexClient {
         }
 
         command
-            .arg(prompt)
+            .stdin(Stdio::piped())
             .stderr(Stdio::piped())
             .stdout(Stdio::piped());
 
@@ -154,6 +155,18 @@ impl CodexClient {
         let mut child = command
             .spawn()
             .map_err(|e| anyhow!(format!("启动 codex 进程失败: {}", e)))?;
+
+        // Pass prompt via stdin to avoid Windows cmd command-line length limits.
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin
+                .write_all(prompt.as_bytes())
+                .await
+                .map_err(|e| anyhow!(format!("写入 codex stdin 失败: {}", e)))?;
+            stdin
+                .shutdown()
+                .await
+                .map_err(|e| anyhow!(format!("关闭 codex stdin 失败: {}", e)))?;
+        }
 
         // 异步收集 stderr，便于失败时输出详细错误
         let mut stderr_handle = child.stderr.take().map(|stderr| {

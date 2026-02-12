@@ -252,19 +252,6 @@ const buildFixDirective = (completionSignal: string) => {
     ].join('\n');
 };
 
-const buildDocBlockFromState = (state: SessionUiState) =>
-    buildDocBlock(
-        state.docFiles.map((f) => ({
-            path: f.path,
-            name: f.name,
-            size: f.size,
-            relativePath: f.relativePath,
-            absPath: f.absPath,
-            content: '',
-        })),
-        state.docBasePath,
-    );
-
 const extractFirstJson = (text: string): string | null => {
     const idx = text.indexOf('{');
     if (idx < 0) return null;
@@ -1001,11 +988,36 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
         config: AutomationConfig,
         cycleId?: number,
     ) => {
-        const docBlock = buildDocBlockFromState(state);
+        const resolvePromptDocs = (currentState: SessionUiState) => {
+            const stateDocs = currentState.docFiles || [];
+            if (stateDocs.length > 0) {
+                return stateDocs.map((f) => ({
+                    path: f.path,
+                    name: f.name,
+                    size: f.size,
+                    relativePath: f.relativePath,
+                    absPath: f.absPath,
+                    content: '',
+                }));
+            }
+            if (ownerId === currentSessionIdRef.current && docFiles.length > 0) {
+                return docFiles.map((f) => ({
+                    path: f.path,
+                    name: f.name,
+                    size: f.size,
+                    relativePath: f.relativePath,
+                    absPath: f.absPath,
+                    content: '',
+                }));
+            }
+            return [] as DocFile[];
+        };
+        const promptDocs = resolvePromptDocs(state);
+        const docBlock = buildDocBlock(promptDocs, state.docBasePath);
         const primaryDoc =
-            state.docFiles[0]?.absPath ||
-            state.docFiles[0]?.path ||
-            state.docFiles[0]?.relativePath ||
+            promptDocs[0]?.absPath ||
+            promptDocs[0]?.path ||
+            promptDocs[0]?.relativePath ||
             '';
         const workdir = state.docBasePath?.trim() || './';
         const workdirHint = buildWorkdirHint(workdir);
@@ -1034,11 +1046,36 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
         stage: 'check' | 'recheck' = 'check',
         recheckMeta?: { index?: number; total?: number; checkSnapshot?: string },
     ) => {
-        const docBlock = buildDocBlockFromState(state);
+        const resolvePromptDocs = (currentState: SessionUiState) => {
+            const stateDocs = currentState.docFiles || [];
+            if (stateDocs.length > 0) {
+                return stateDocs.map((f) => ({
+                    path: f.path,
+                    name: f.name,
+                    size: f.size,
+                    relativePath: f.relativePath,
+                    absPath: f.absPath,
+                    content: '',
+                }));
+            }
+            if (ownerId === currentSessionIdRef.current && docFiles.length > 0) {
+                return docFiles.map((f) => ({
+                    path: f.path,
+                    name: f.name,
+                    size: f.size,
+                    relativePath: f.relativePath,
+                    absPath: f.absPath,
+                    content: '',
+                }));
+            }
+            return [] as DocFile[];
+        };
+        const promptDocs = resolvePromptDocs(state);
+        const docBlock = buildDocBlock(promptDocs, state.docBasePath);
         const primaryDoc =
-            state.docFiles[0]?.absPath ||
-            state.docFiles[0]?.path ||
-            state.docFiles[0]?.relativePath ||
+            promptDocs[0]?.absPath ||
+            promptDocs[0]?.path ||
+            promptDocs[0]?.relativePath ||
             '';
         const workdir = state.docBasePath?.trim() || './';
         const workdirHint = buildWorkdirHint(workdir);
@@ -1085,11 +1122,36 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
         recheckTotal: number,
         cycleId?: number,
     ) => {
-        const docBlock = buildDocBlockFromState(state);
+        const resolvePromptDocs = (currentState: SessionUiState) => {
+            const stateDocs = currentState.docFiles || [];
+            if (stateDocs.length > 0) {
+                return stateDocs.map((f) => ({
+                    path: f.path,
+                    name: f.name,
+                    size: f.size,
+                    relativePath: f.relativePath,
+                    absPath: f.absPath,
+                    content: '',
+                }));
+            }
+            if (ownerId === currentSessionIdRef.current && docFiles.length > 0) {
+                return docFiles.map((f) => ({
+                    path: f.path,
+                    name: f.name,
+                    size: f.size,
+                    relativePath: f.relativePath,
+                    absPath: f.absPath,
+                    content: '',
+                }));
+            }
+            return [] as DocFile[];
+        };
+        const promptDocs = resolvePromptDocs(state);
+        const docBlock = buildDocBlock(promptDocs, state.docBasePath);
         const primaryDoc =
-            state.docFiles[0]?.absPath ||
-            state.docFiles[0]?.path ||
-            state.docFiles[0]?.relativePath ||
+            promptDocs[0]?.absPath ||
+            promptDocs[0]?.path ||
+            promptDocs[0]?.relativePath ||
             '';
         const workdir = state.docBasePath?.trim() || './';
         const workdirHint = buildWorkdirHint(workdir);
@@ -1110,6 +1172,12 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
         appendPromptLog(ownerId, prompt, cycleId);
         return prompt;
     };
+
+    const buildStrictJsonRetryPrompt = (originalPrompt: string) =>
+        `${originalPrompt}\n\n` +
+        'IMPORTANT: Your previous response was not valid JSON.\n' +
+        'Now re-run the check and output exactly one JSON object only.\n' +
+        'Do not include markdown, explanation, or extra text.';
 
     const startAutomation = async (cycle = 1, ownerId: string = sessionId) => {
         updateSessionStateEntry(ownerId, (prev) => ({
@@ -1273,6 +1341,16 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
 
     const runAutomationCycle = async (ownerId: string, cycle = 1, configOverride?: AutomationConfig) => {
         const state = ensureSessionState(ownerId);
+        const hasDocs = (state.docFiles?.length || 0) > 0 || (ownerId === currentSessionIdRef.current && docFiles.length > 0);
+        if (!hasDocs) {
+            updateSessionStateEntry(ownerId, (prev) => ({
+                ...prev,
+                autoRunning: false,
+                autoStatus: '自动执行失败：未检测到文档，请先选择文档',
+            }));
+            appendLog(ownerId, '自动执行失败：未检测到文档，请先在当前会话选择至少一个文档。', cycle);
+            return;
+        }
         const config = normalizeAutomationConfig(configOverride || state.autoConfig);
         if (state.autoAbort) {
             updateSessionStateEntry(ownerId, (prev) => ({ ...prev, autoRunning: false, autoStatus: '已停止' }));
@@ -1307,15 +1385,35 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
             if (checkReply?.content) {
                 appendLog(ownerId, `第 ${cycle} 轮检查回复：${checkReply.content}`, cycle);
             }
-            const parsedCheckJson =
+            let parsedCheckJson =
                 checkReply?.content ? extractFirstJson(checkReply.content) : null;
+            let effectiveCheckReply = checkReply;
+            if (!parsedCheckJson) {
+                updateSessionStateEntry(ownerId, (prev) => ({
+                    ...prev,
+                    autoStatus: `第 ${cycle} 轮：检查输出非 JSON，强制重试 check…`,
+                }));
+                const strictCheckPrompt = buildStrictJsonRetryPrompt(checkPrompt);
+                const retryReply = await sendContent(ownerId, target, strictCheckPrompt, true, true, false);
+                if (retryReply?.content) {
+                    appendLog(ownerId, `第 ${cycle} 轮检查重试回复：${retryReply.content}`, cycle);
+                }
+                const retryParsed = retryReply?.content ? extractFirstJson(retryReply.content) : null;
+                if (retryParsed) {
+                    parsedCheckJson = retryParsed;
+                    effectiveCheckReply = retryReply;
+                    appendLog(ownerId, `第 ${cycle} 轮检查重试结果(JSON)：\n${retryParsed}`, cycle);
+                } else {
+                    appendLog(ownerId, `第 ${cycle} 轮检查重试仍非 JSON，继续进入 do。`, cycle);
+                }
+            }
             if (parsedCheckJson) {
                 appendLog(ownerId, `第 ${cycle} 轮检查结果(JSON)：\n${parsedCheckJson}`, cycle);
             } else {
                 appendLog(ownerId, `第 ${cycle} 轮检查结果未解析到有效 JSON，原始内容已记录。`, cycle);
             }
-            const baseCheckResult = parsedCheckJson || checkReply?.content || '';
-            const checkComplete = isCompletionDetected(checkReply, parsedCheckJson, config.completionSignal);
+            const baseCheckResult = parsedCheckJson || effectiveCheckReply?.content || '';
+            const checkComplete = isCompletionDetected(effectiveCheckReply, parsedCheckJson, config.completionSignal);
             if (!checkComplete) {
                 resetRecheckProgress(ownerId);
                 const currentState = ensureSessionState(ownerId);
@@ -1417,14 +1515,30 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                 if (recheckReply?.content) {
                     appendLog(ownerId, `第 ${cycle} 轮复查(${recheckIndex}/${recheckTotal})回复：${recheckReply.content}`, cycle);
                 }
-                const parsedRecheckJson = recheckReply?.content ? extractFirstJson(recheckReply.content) : null;
+                let parsedRecheckJson = recheckReply?.content ? extractFirstJson(recheckReply.content) : null;
+                let effectiveRecheckReply = recheckReply;
+                if (!parsedRecheckJson) {
+                    const strictRecheckPrompt = buildStrictJsonRetryPrompt(recheckPrompt);
+                    const retryRecheckReply = await sendContent(ownerId, recheckTarget, strictRecheckPrompt, true, true, false);
+                    if (retryRecheckReply?.content) {
+                        appendLog(ownerId, `第 ${cycle} 轮复查(${recheckIndex}/${recheckTotal})重试回复：${retryRecheckReply.content}`, cycle);
+                    }
+                    const retryRecheckParsed = retryRecheckReply?.content ? extractFirstJson(retryRecheckReply.content) : null;
+                    if (retryRecheckParsed) {
+                        parsedRecheckJson = retryRecheckParsed;
+                        effectiveRecheckReply = retryRecheckReply;
+                        appendLog(ownerId, `第 ${cycle} 轮复查(${recheckIndex}/${recheckTotal})重试结果(JSON)：\n${retryRecheckParsed}`, cycle);
+                    } else {
+                        appendLog(ownerId, `第 ${cycle} 轮复查(${recheckIndex}/${recheckTotal})重试仍非 JSON，继续进入 do。`, cycle);
+                    }
+                }
                 if (parsedRecheckJson) {
                     appendLog(ownerId, `第 ${cycle} 轮复查(${recheckIndex}/${recheckTotal})结果(JSON)：\n${parsedRecheckJson}`, cycle);
                 } else {
                     appendLog(ownerId, `第 ${cycle} 轮复查(${recheckIndex}/${recheckTotal})未解析到有效 JSON，原始内容已记录。`, cycle);
                 }
 
-                const recheckComplete = isCompletionDetected(recheckReply, parsedRecheckJson, config.completionSignal);
+                const recheckComplete = isCompletionDetected(effectiveRecheckReply, parsedRecheckJson, config.completionSignal);
                 if (recheckComplete) {
                     setRecheckProgressValue(ownerId, recheckIndex);
                     if (recheckIndex === recheckTotal) {
@@ -1452,7 +1566,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                     ownerId,
                     abortState,
                     config,
-                    parsedRecheckJson || recheckReply?.content || baseCheckResult,
+                    parsedRecheckJson || effectiveRecheckReply?.content || baseCheckResult,
                     cycle,
                     'recheck',
                     { index: recheckIndex, total: recheckTotal, checkSnapshot: baseCheckResult },
