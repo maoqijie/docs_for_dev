@@ -885,6 +885,42 @@ rm -rf node_modules/.vite
 npm run build
 ```
 
+#### 7. Linux GTK 初始化失败（X11 客户端数达上限）
+
+**错误信息**:
+```
+Maximum number of clients reached
+Failed to initialize gtk backend!
+Failed to initialize GTK
+```
+
+**原因说明**:
+
+当前 `DISPLAY` 对应的 X11 会话连接数已达到上限，导致 Tauri 无法初始化 GTK。
+
+**解决方法**:
+
+1. **关闭部分图形程序后重试**（浏览器、IDE、聊天工具等）:
+   ```bash
+   # 查看 X11 连接占用前 20 的进程
+   lsof -U /tmp/.X11-unix/X${DISPLAY#:} 2>/dev/null \
+     | awk 'NR>1 {print $1, $2}' \
+     | sort | uniq -c | sort -nr | head -20
+   ```
+
+2. **检查显示连接是否可用**:
+   ```bash
+   xdpyinfo -display "$DISPLAY"
+   ```
+
+3. **必要时重启图形会话**:
+   - 注销当前桌面会话后重新登录
+   - 或重启系统以释放异常占用连接
+
+4. **使用启动脚本快速诊断**:
+   - `./start_dev.sh` 会在启动 Tauri 前自动检测显示环境
+   - 若命中此问题，会直接给出可读错误并打印高占用进程
+
 ### 调试技巧
 
 #### 前端调试
