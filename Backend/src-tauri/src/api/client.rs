@@ -1,15 +1,56 @@
 use std::process::Stdio;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
-    process::Command,
+    process::{Child, Command},
+    task::JoinHandle,
+    time::{timeout, Instant},
 };
 
 /// 简单日志函数，便于在 tauri 日志中看到关键步骤
 fn log_info(msg: &str) {
     println!("[codex-client] {}", msg);
+}
+
+fn is_cancelled(cancel_flag: &Option<Arc<AtomicBool>>) -> bool {
+    cancel_flag
+        .as_ref()
+        .map(|flag| flag.load(Ordering::SeqCst))
+        .unwrap_or(false)
+}
+
+async fn collect_stderr_output(stderr_handle: &mut Option<JoinHandle<String>>) -> String {
+    match stderr_handle.take() {
+        Some(handle) => match timeout(Duration::from_secs(2), handle).await {
+            Ok(joined) => joined.unwrap_or_default(),
+            Err(_) => String::new(),
+        },
+        None => String::new(),
+    }
+}
+
+async fn terminate_process_tree(child: &mut Child) {
+    let pid = child.id().map(|id| id as i32);
+
+    #[cfg(unix)]
+    if let Some(pid) = pid {
+        let group = format!("-{}", pid);
+        let _ = Command::new("kill").arg("-TERM").arg(&group).status().await;
+    }
+
+    let _ = child.start_kill();
+    let _ = timeout(Duration::from_secs(5), child.wait()).await;
+
+    #[cfg(unix)]
+    if let Some(pid) = pid {
+        let group = format!("-{}", pid);
+        let _ = Command::new("kill").arg("-KILL").arg(&group).status().await;
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,6 +74,7 @@ impl CodexClient {
         model_override: Option<String>,
         thinking_depth: Option<String>,
         working_dir: Option<String>,
+        cancel_flag: Option<Arc<AtomicBool>>,
         mut on_chunk: F,
     ) -> Result<String>
     where
@@ -62,6 +104,9 @@ impl CodexClient {
             .arg("--dangerously-bypass-approvals-and-sandbox")
             .arg("--skip-git-repo-check");
 
+        // 发生错误路径提前返回时，自动尝试终止子进程
+        command.kill_on_drop(true);
+
         // 添加工作目录参数
         if let Some(ref dir) = working_dir {
             // 展开 ~ 为用户主目录
@@ -76,6 +121,12 @@ impl CodexClient {
             };
             log_info(&format!("设置工作目录: {}", expanded_dir));
             command.arg("-C").arg(&expanded_dir);
+        }
+
+        #[cfg(unix)]
+        {
+            // 为子进程建立独立进程组，便于取消时连同 MCP 子进程一起回收
+            command.process_group(0);
         }
 
         command
@@ -94,7 +145,7 @@ impl CodexClient {
             .map_err(|e| anyhow!(format!("启动 codex 进程失败: {}", e)))?;
 
         // 异步收集 stderr，便于失败时输出详细错误
-        let stderr_handle = child.stderr.take().map(|stderr| {
+        let mut stderr_handle = child.stderr.take().map(|stderr| {
             tokio::spawn(async move {
                 let mut reader = BufReader::new(stderr);
                 let mut buf = String::new();
@@ -109,15 +160,71 @@ impl CodexClient {
             })
         });
 
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| anyhow!("无法获取 codex stdout"))?;
+        let stdout = match child.stdout.take() {
+            Some(out) => out,
+            None => {
+                terminate_process_tree(&mut child).await;
+                let stderr_output = collect_stderr_output(&mut stderr_handle).await;
+                let detail = if stderr_output.trim().is_empty() {
+                    "无法获取 codex stdout".to_string()
+                } else {
+                    format!("无法获取 codex stdout | {}", stderr_output.trim())
+                };
+                return Err(anyhow!(detail));
+            }
+        };
 
         let mut reader = BufReader::new(stdout).lines();
         let mut full_content = String::new();
+        let timeout_secs = std::env::var("CODEX_EXEC_TIMEOUT_SECS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .filter(|v| *v > 0)
+            .unwrap_or(900);
+        let deadline = Instant::now() + Duration::from_secs(timeout_secs);
+        let poll_interval = Duration::from_millis(250);
 
-        while let Some(line) = reader.next_line().await? {
+        loop {
+            if is_cancelled(&cancel_flag) {
+                terminate_process_tree(&mut child).await;
+                let stderr_output = collect_stderr_output(&mut stderr_handle).await;
+                let detail = if stderr_output.trim().is_empty() {
+                    "请求已取消".to_string()
+                } else {
+                    format!("请求已取消 | {}", stderr_output.trim())
+                };
+                return Err(anyhow!(detail));
+            }
+            if Instant::now() >= deadline {
+                terminate_process_tree(&mut child).await;
+                let stderr_output = collect_stderr_output(&mut stderr_handle).await;
+                let detail = if stderr_output.trim().is_empty() {
+                    format!("codex 执行超时（>{} 秒）", timeout_secs)
+                } else {
+                    format!("codex 执行超时（>{} 秒） | {}", timeout_secs, stderr_output.trim())
+                };
+                return Err(anyhow!(detail));
+            }
+
+            let next = match timeout(poll_interval, reader.next_line()).await {
+                Ok(result) => result,
+                Err(_) => continue,
+            };
+            let line = match next {
+                Ok(Some(line)) => line,
+                Ok(None) => break,
+                Err(e) => {
+                    terminate_process_tree(&mut child).await;
+                    let stderr_output = collect_stderr_output(&mut stderr_handle).await;
+                    let detail = if stderr_output.trim().is_empty() {
+                        format!("读取 codex 输出失败: {}", e)
+                    } else {
+                        format!("读取 codex 输出失败: {} | {}", e, stderr_output.trim())
+                    };
+                    return Err(anyhow!(detail));
+                }
+            };
+
             // 去掉空行
             let mut raw = line.trim().to_string();
             if raw.is_empty() {
@@ -172,12 +279,33 @@ impl CodexClient {
             continue;
         }
 
-        let status = child.wait().await?;
-        let stderr_output = if let Some(handle) = stderr_handle {
-            handle.await.unwrap_or_default()
-        } else {
-            String::new()
+        let status = match timeout(Duration::from_secs(15), child.wait()).await {
+            Ok(Ok(status)) => status,
+            Ok(Err(e)) => {
+                let stderr_output = collect_stderr_output(&mut stderr_handle).await;
+                let detail = if stderr_output.trim().is_empty() {
+                    format!("等待 codex 退出失败: {}", e)
+                } else {
+                    format!("等待 codex 退出失败: {} | {}", e, stderr_output.trim())
+                };
+                return Err(anyhow!(detail));
+            }
+            Err(_) => {
+                terminate_process_tree(&mut child).await;
+                let stderr_output = collect_stderr_output(&mut stderr_handle).await;
+                let detail = if stderr_output.trim().is_empty() {
+                    "等待 codex 退出超时".to_string()
+                } else {
+                    format!("等待 codex 退出超时 | {}", stderr_output.trim())
+                };
+                return Err(anyhow!(detail));
+            }
         };
+        let stderr_output = collect_stderr_output(&mut stderr_handle).await;
+
+        if is_cancelled(&cancel_flag) {
+            return Err(anyhow!("请求已取消"));
+        }
 
         if !status.success() {
             let detail = if stderr_output.trim().is_empty() {
@@ -195,7 +323,9 @@ impl CodexClient {
     pub async fn chat(&self, messages: Vec<ChatMessage>) -> Result<String> {
         let mut buffer = String::new();
         let _ = self
-            .chat_stream(messages, None, None, None, |chunk| buffer.push_str(&chunk))
+            .chat_stream(messages, None, None, None, None, |chunk| {
+                buffer.push_str(&chunk)
+            })
             .await?;
         Ok(buffer)
     }

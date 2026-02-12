@@ -118,6 +118,19 @@ export async function sendMessage(
     }
 }
 
+/**
+ * 取消当前会话正在执行的后端任务（如 codex/mcp 子进程）
+ * @param sessionId 会话 ID
+ */
+export async function cancelSessionRun(sessionId: string): Promise<boolean> {
+    try {
+        return await safeInvoke<boolean>('cancel_session_run', { sessionId, session_id: sessionId });
+    } catch (error) {
+        console.error('cancel_session_run 调用失败', error);
+        return false;
+    }
+}
+
 // ==================== 文档选择 ====================
 
 export interface PickedDocument {

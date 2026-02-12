@@ -10,6 +10,7 @@ import {
     setSessionState,
     renderTemplate,
     sendSystemNotification,
+    cancelSessionRun,
 } from '../lib/api';
 import { MessageList } from './MessageList';
 import { InputBox } from './InputBox';
@@ -1193,6 +1194,13 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
     };
 
     const handleStopAutomation = (ownerId: string = sessionId) => {
+        const runtimeState = ensureSessionState(ownerId);
+        const targetToCancel = runtimeState.autoTargetSessionId || ownerId;
+        void cancelSessionRun(targetToCancel);
+        if (targetToCancel !== ownerId) {
+            void cancelSessionRun(ownerId);
+        }
+
         updateSessionStateEntry(ownerId, (prev) => ({
             ...prev,
             autoAbort: true,

@@ -4,7 +4,11 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use codex_chat_lib::{
-    api::CodexClient, commands, db::DbManager, prompt_templates::PromptTemplateManager,
+    api::CodexClient,
+    commands,
+    commands::RunCancellationRegistry,
+    db::DbManager,
+    prompt_templates::PromptTemplateManager,
 };
 
 fn main() {
@@ -36,6 +40,7 @@ fn main() {
     let template_manager = Arc::new(Mutex::new(
         PromptTemplateManager::new(templates_dir).expect("模板管理器初始化失败"),
     ));
+    let run_registry = Arc::new(RunCancellationRegistry::default());
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -44,11 +49,13 @@ fn main() {
         .manage(db_manager)
         .manage(codex_client)
         .manage(template_manager)
+        .manage(run_registry)
         .invoke_handler(tauri::generate_handler![
             commands::create_session,
             commands::get_sessions,
             commands::get_messages,
             commands::send_message,
+            commands::cancel_session_run,
             commands::delete_session,
             commands::update_session_title,
             commands::get_session_state,

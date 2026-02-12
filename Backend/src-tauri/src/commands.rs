@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -13,6 +14,51 @@ use crate::{
     db::{DbManager, Message, Session},
     prompt_templates::{PromptTemplate, PromptTemplateManager},
 };
+
+#[derive(Default)]
+pub struct RunCancellationRegistry {
+    flags: Mutex<HashMap<String, Arc<AtomicBool>>>,
+}
+
+impl RunCancellationRegistry {
+    fn begin(&self, session_id: &str) -> Result<Arc<AtomicBool>, String> {
+        let mut flags = self
+            .flags
+            .lock()
+            .map_err(|e| format!("锁定运行注册表失败: {}", e))?;
+        if let Some(existing) = flags.get(session_id) {
+            existing.store(true, Ordering::SeqCst);
+        }
+        let flag = Arc::new(AtomicBool::new(false));
+        flags.insert(session_id.to_string(), flag.clone());
+        Ok(flag)
+    }
+
+    fn cancel(&self, session_id: &str) -> Result<bool, String> {
+        let flags = self
+            .flags
+            .lock()
+            .map_err(|e| format!("锁定运行注册表失败: {}", e))?;
+        if let Some(flag) = flags.get(session_id) {
+            flag.store(true, Ordering::SeqCst);
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    fn finish(&self, session_id: &str, owner: &Arc<AtomicBool>) -> Result<(), String> {
+        let mut flags = self
+            .flags
+            .lock()
+            .map_err(|e| format!("锁定运行注册表失败: {}", e))?;
+        if let Some(current) = flags.get(session_id) {
+            if Arc::ptr_eq(current, owner) {
+                flags.remove(session_id);
+            }
+        }
+        Ok(())
+    }
+}
 
 #[tauri::command]
 pub async fn create_session(
@@ -50,6 +96,7 @@ pub async fn send_message(
     window: Window,
     db: State<'_, Arc<DbManager>>,
     client: State<'_, Arc<CodexClient>>,
+    run_registry: State<'_, Arc<RunCancellationRegistry>>,
     session_id: String,
     content: String,
     model: Option<String>,
@@ -68,6 +115,8 @@ pub async fn send_message(
 
     db.add_message(&session_id, "user", &content)
         .map_err(|e| format!("保存用户消息失败: {}", e))?;
+
+    let cancel_flag = run_registry.begin(&session_id)?;
 
     let chat_messages: Vec<ChatMessage> = if isolated {
         vec![ChatMessage {
@@ -89,12 +138,13 @@ pub async fn send_message(
     };
 
     let window_clone = window.clone();
-    let response = client
+    let response_result = client
         .chat_stream(
             chat_messages,
             model,
             thinking_depth,
             working_dir,
+            Some(cancel_flag.clone()),
             move |chunk| {
                 let _ = window_clone.emit("message-chunk", chunk);
             },
@@ -103,12 +153,29 @@ pub async fn send_message(
         .map_err(|e| {
             println!("[commands] codex 调用失败: {}", e);
             format!("API 调用失败: {}", e)
-        })?;
+        });
+
+    if let Err(e) = run_registry.finish(&session_id, &cancel_flag) {
+        println!(
+            "[commands] 清理运行注册表失败 session_id={} err={}",
+            session_id, e
+        );
+    }
+
+    let response = response_result?;
 
     db.add_message(&session_id, "assistant", &response)
         .map_err(|e| format!("保存 AI 回复失败: {}", e))?;
 
     Ok(())
+}
+
+#[tauri::command]
+pub async fn cancel_session_run(
+    run_registry: State<'_, Arc<RunCancellationRegistry>>,
+    session_id: String,
+) -> Result<bool, String> {
+    run_registry.cancel(&session_id)
 }
 
 #[tauri::command]
