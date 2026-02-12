@@ -93,8 +93,19 @@ impl CodexClient {
             log_info(&format!("PATH={}", path));
         }
 
-        log_info("Using codex binary from system PATH");
-        let mut command = Command::new("codex");
+        #[cfg(windows)]
+        let mut command = {
+            log_info("Using codex.cmd via cmd.exe from system PATH");
+            let mut cmd = Command::new("cmd");
+            cmd.arg("/C").arg("codex.cmd");
+            cmd
+        };
+
+        #[cfg(not(windows))]
+        let mut command = {
+            log_info("Using codex binary from system PATH");
+            Command::new("codex")
+        };
 
         command
             .arg("exec")

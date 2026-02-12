@@ -769,6 +769,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
         content: string,
         skipUiInjection = false,
         isolateContext = true,
+        applyDocModePrefix = true,
     ): Promise<Message | null> => {
         const state = ensureSessionState(ownerId);
         const targetSession = targetOverride || ownerId;
@@ -799,7 +800,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
             );
 
             const finalContent =
-                state.mode === 'doc-dev'
+                state.mode === 'doc-dev' && applyDocModePrefix
                     ? `【文档开发模式】请针对文档/开发相关需求输出结构化、可执行的步骤与示例。\n${content}`
                     : content;
 
@@ -1300,6 +1301,8 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                 target,
                 checkPrompt,
                 true,
+                true,
+                false,
             );
             if (checkReply?.content) {
                 appendLog(ownerId, `第 ${cycle} 轮检查回复：${checkReply.content}`, cycle);
@@ -1335,7 +1338,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                     cycle,
                     'check',
                 );
-                const doReply = await sendContent(ownerId, target, doPrompt, true);
+                const doReply = await sendContent(ownerId, target, doPrompt, true, true, false);
                 if (doReply?.content) {
                     appendLog(ownerId, `第 ${cycle} 轮执行回复：${doReply.content}`, cycle);
                 }
@@ -1410,7 +1413,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                     recheckTotal,
                     cycle,
                 );
-                const recheckReply = await sendContent(ownerId, recheckTarget, recheckPrompt, true);
+                const recheckReply = await sendContent(ownerId, recheckTarget, recheckPrompt, true, true, false);
                 if (recheckReply?.content) {
                     appendLog(ownerId, `第 ${cycle} 轮复查(${recheckIndex}/${recheckTotal})回复：${recheckReply.content}`, cycle);
                 }
@@ -1454,7 +1457,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                     'recheck',
                     { index: recheckIndex, total: recheckTotal, checkSnapshot: baseCheckResult },
                 );
-                const doReply = await sendContent(ownerId, recheckTarget, doPrompt, true);
+                const doReply = await sendContent(ownerId, recheckTarget, doPrompt, true, true, false);
                 if (doReply?.content) {
                     appendLog(ownerId, `第 ${cycle} 轮执行回复：${doReply.content}`, cycle);
                 }
