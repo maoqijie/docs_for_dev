@@ -41,11 +41,44 @@ show_top_x11_clients() {
   fi
 }
 
+count_x11_clients() {
+  local display="$1"
+  local display_number="${display#*:}"
+  display_number="${display_number%%.*}"
+  local x_socket="/tmp/.X11-unix/X${display_number}"
+
+  if [[ ! -S "$x_socket" ]] || ! command -v lsof >/dev/null 2>&1; then
+    echo ""
+    return 0
+  fi
+
+  {
+    lsof -U "$x_socket" 2>/dev/null || true
+  } \
+    | awk 'NR>1 {print $2}' \
+    | sort -u \
+    | wc -l \
+    | tr -d '[:space:]'
+}
+
 check_gui_backend() {
   local display="${DISPLAY:-}"
+  local x11_client_soft_limit="${X11_CLIENT_SOFT_LIMIT:-240}"
 
   if [[ -z "$display" ]]; then
     echo "未检测到 DISPLAY，无法启动 Tauri 图形界面。" >&2
+    return 1
+  fi
+
+  local client_count=""
+  client_count="$(count_x11_clients "$display")"
+
+  if [[ -n "$client_count" ]] && [[ "$client_count" =~ ^[0-9]+$ ]] && [[ "$client_count" -ge "$x11_client_soft_limit" ]]; then
+    echo "检测到当前 X11 客户端数量 ${client_count}，已接近上限（阈值 ${x11_client_soft_limit}）。" >&2
+    echo "为避免 Tauri 在编译后启动失败，本次启动已提前中止。" >&2
+    echo "请先关闭部分图形应用，或临时提高阈值后再试：" >&2
+    echo "X11_CLIENT_SOFT_LIMIT=300 ./start_dev.sh" >&2
+    show_top_x11_clients "$display"
     return 1
   fi
 
@@ -81,6 +114,9 @@ if [[ -z "${CODEX_API_KEY:-}" ]]; then
   echo "缺少 CODEX_API_KEY（环境变量或 ~/.codex/auth.json 的 OPENAI_API_KEY）" >&2
   exit 1
 fi
+
+# 启动前先检查图形环境，避免完成编译后才在 GTK 初始化阶段失败
+check_gui_backend
 
 # 启动前端 Dev Server
 cd "$ROOT_DIR/UI"
