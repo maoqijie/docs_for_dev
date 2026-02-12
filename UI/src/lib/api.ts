@@ -89,7 +89,8 @@ export async function sendMessage(
     model: string,
     thinkingDepth: string,
     onChunk: (chunk: string) => void,
-    workingDir?: string
+    workingDir?: string,
+    isolateContext: boolean = true,
 ): Promise<void> {
     try {
         const normalizedWorkdir = workingDir?.trim() || undefined;
@@ -103,6 +104,8 @@ export async function sendMessage(
             thinking_depth: thinkingDepth,
             working_dir: normalizedWorkdir,
             workingDir: normalizedWorkdir,
+            isolate_context: isolateContext,
+            isolateContext,
         });
 
         // 若需要流式展示，可在此扩展（当前后端已写入 DB，前端后续 reload）

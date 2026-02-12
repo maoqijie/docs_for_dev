@@ -55,28 +55,38 @@ pub async fn send_message(
     model: Option<String>,
     thinking_depth: Option<String>,
     working_dir: Option<String>,
+    isolate_context: Option<bool>,
 ) -> Result<(), String> {
+    let isolated = isolate_context.unwrap_or(true);
     println!(
-        "[commands] send_message session_id={} content_preview={} working_dir={:?}",
+        "[commands] send_message session_id={} content_preview={} working_dir={:?} isolate_context={}",
         session_id,
         content.chars().take(80).collect::<String>(),
-        working_dir
+        working_dir,
+        isolated,
     );
 
     db.add_message(&session_id, "user", &content)
         .map_err(|e| format!("保存用户消息失败: {}", e))?;
 
-    let messages = db
-        .get_session_messages(&session_id)
-        .map_err(|e| format!("获取历史消息失败: {}", e))?;
+    let chat_messages: Vec<ChatMessage> = if isolated {
+        vec![ChatMessage {
+            role: "user".to_string(),
+            content: content.clone(),
+        }]
+    } else {
+        let messages = db
+            .get_session_messages(&session_id)
+            .map_err(|e| format!("获取历史消息失败: {}", e))?;
 
-    let chat_messages: Vec<ChatMessage> = messages
-        .iter()
-        .map(|m| ChatMessage {
-            role: m.role.clone(),
-            content: m.content.clone(),
-        })
-        .collect();
+        messages
+            .iter()
+            .map(|m| ChatMessage {
+                role: m.role.clone(),
+                content: m.content.clone(),
+            })
+            .collect()
+    };
 
     let window_clone = window.clone();
     let response = client

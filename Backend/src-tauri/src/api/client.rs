@@ -27,38 +27,6 @@ impl CodexClient {
         Self { model }
     }
 
-    fn resolve_codex_path(&self) -> (String, Option<String>) {
-        let candidates = vec![
-            // 优先检查 env
-            std::env::var("CODEX_PATH").ok().map(std::path::PathBuf::from),
-            // 用户主目录下的 .bun/bin
-            dirs::home_dir().map(|h| h.join(".bun/bin/codex")),
-            // 常见的 node 路径 (特定版本，硬编码以解决用户环境问题)
-            Some(std::path::PathBuf::from("/opt/node-v22.12.0/bin/codex")),
-            // 通用路径
-            Some(std::path::PathBuf::from("/usr/local/bin/codex")),
-        ];
-
-        let current_path = std::env::var("PATH").unwrap_or_default();
-
-        for candidate in candidates.into_iter().flatten() {
-            if candidate.exists() {
-                let bin_path = candidate.to_string_lossy().to_string();
-                // 找到 binary 后，将其所在目录加入 PATH（为了让 node 等依赖能被找到）
-                if let Some(parent) = candidate.parent() {
-                    let dir = parent.to_string_lossy();
-                    // 简单的 PATH 拼接： dir:current_path
-                    let new_path = format!("{}:{}", dir, current_path);
-                    return (bin_path, Some(new_path));
-                }
-                return (bin_path, None);
-            }
-        }
-
-        // 默认回退
-        ("codex".to_string(), None)
-    }
-
     pub async fn chat_stream<F>(
         &self,
         messages: Vec<ChatMessage>,
@@ -83,25 +51,15 @@ impl CodexClient {
             log_info(&format!("PATH={}", path));
         }
 
-        let (codex_bin, params_path) = self.resolve_codex_path();
-        log_info(&format!("Using codex binary: {}", codex_bin));
-        if let Some(p) = &params_path {
-             log_info(&format!("Updated PATH for process: {}", p));
-        }
-
-        let mut command = Command::new(codex_bin);
-        
-        if let Some(new_path) = params_path {
-            command.env("PATH", new_path);
-        }
+        log_info("Using codex binary from system PATH");
+        let mut command = Command::new("codex");
 
         command
             .arg("exec")
             .arg("--json")
-            .arg("--model")
+            .arg("-m")
             .arg(model_override.unwrap_or_else(|| self.model.clone()))
-            .arg("--sandbox")
-            .arg("danger-full-access")
+            .arg("--dangerously-bypass-approvals-and-sandbox")
             .arg("--skip-git-repo-check");
 
         // 添加工作目录参数

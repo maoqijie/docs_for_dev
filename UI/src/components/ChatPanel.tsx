@@ -767,6 +767,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
         targetOverride: string | undefined,
         content: string,
         skipUiInjection = false,
+        isolateContext = true,
     ): Promise<Message | null> => {
         const state = ensureSessionState(ownerId);
         const targetSession = targetOverride || ownerId;
@@ -814,6 +815,7 @@ export function ChatPanel({ sessionId, sessionTitle, mode, onModeBack, onCreateS
                     }
                 },
                 state.mode === 'doc-dev' ? state.docBasePath : undefined,
+                isolateContext,
             );
 
             const updated = await getMessages(targetSession);
