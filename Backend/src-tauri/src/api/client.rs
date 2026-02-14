@@ -95,7 +95,6 @@ impl CodexClient {
 
         #[cfg(windows)]
         let mut command = {
-            use std::os::windows::process::CommandExt;
             const CREATE_NO_WINDOW: u32 = 0x08000000;
             log_info("Using codex.cmd via cmd.exe from system PATH");
             let mut cmd = Command::new("cmd");
